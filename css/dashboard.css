@@ -1,0 +1,567 @@
+﻿/* ==========================================================================
+   AgriMart Dashboard Stylesheet (dashboard.css) - Clean Minimalist UI
+   ========================================================================== */
+
+:root {
+    --sidebar-width: 260px;
+    --sidebar-collapsed-width: 72px;
+    --topbar-height: 68px;
+}
+
+body.dashboard-body {
+    margin: 0;
+    background: #f4f0df;
+    color: #162018;
+    font-family: inherit;
+    overflow-x: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   TOP NAVIGATION BAR
+   -------------------------------------------------------------------------- */
+.dash-topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--topbar-height);
+    background: var(--forest-950, #061b0f);
+    border-bottom: 1px solid rgba(214, 185, 95, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    z-index: 1000;
+    box-sizing: border-box;
+}
+
+.dash-topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.dash-menu-toggle {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #f5f0df;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .2s ease;
+}
+
+.dash-menu-toggle:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.dash-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: #f5f0df;
+}
+
+.dash-brand b {
+    font-family: Georgia, serif;
+    font-size: 20px;
+    letter-spacing: 0.5px;
+}
+
+.dash-brand span {
+    font-size: 11px;
+    color: var(--wheat-300, #d6b95f);
+    font-family: monospace;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.dash-topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: relative;
+}
+
+.dash-icon-btn {
+    position: relative;
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #f5f0df;
+    padding: 8px 12px;
+    text-decoration: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: monospace;
+    transition: background .2s ease, border-color .2s ease;
+}
+
+.dash-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: #d6b95f;
+}
+
+.dash-icon-svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.dash-badge-count {
+    background: #c6a743;
+    color: #061b0f;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+}
+
+/* User Avatar / Dropdown Trigger */
+.dash-user-pill-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #f5f0df;
+    font-size: 13.5px;
+    padding: 6px 14px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(214, 185, 95, 0.25);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background .2s ease, border-color .2s ease;
+}
+
+.dash-user-pill-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: #d6b95f;
+}
+
+.dash-user-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #768047;
+    color: #fff;
+    font-weight: 700;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* --------------------------------------------------------------------------
+   TOP-RIGHT PROFILE DROPDOWN MENU
+   -------------------------------------------------------------------------- */
+.yt-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 290px;
+    background: #0e2719;
+    border: 1px solid rgba(214, 185, 95, 0.3);
+    border-radius: 6px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    z-index: 9999;
+    overflow: hidden;
+    animation: ytDropAnim .2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes ytDropAnim {
+    from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.yt-dropdown-menu.show {
+    display: block;
+}
+
+.yt-menu-header {
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.yt-menu-header-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: #768047;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.yt-menu-header-info {
+    overflow: hidden;
+}
+
+.yt-menu-header-info .name {
+    font-family: Georgia, serif;
+    font-weight: 700;
+    color: #f5f0df;
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.yt-menu-header-info .email {
+    font-size: 12px;
+    color: #a8a594;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.yt-menu-section {
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.yt-menu-section:last-child {
+    border-bottom: none;
+}
+
+.yt-menu-section-title {
+    font-family: monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #d6b95f;
+    padding: 6px 18px 4px;
+    display: block;
+}
+
+.yt-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 18px;
+    color: #dedccf;
+    text-decoration: none;
+    font-size: 13px;
+    transition: background .15s ease, color .15s ease;
+}
+
+.yt-menu-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.yt-menu-badge {
+    margin-left: auto;
+    background: #c6a743;
+    color: #061b0f;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   SIDEBAR (COLLAPSIBLE DRAWER)
+   -------------------------------------------------------------------------- */
+.dash-sidebar {
+    position: fixed;
+    top: var(--topbar-height);
+    left: 0;
+    bottom: 0;
+    width: var(--sidebar-width);
+    background: #0d2818;
+    color: #f5f0df;
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 900;
+    padding: 16px 0 30px;
+    transition: width .25s ease, transform .25s ease;
+    border-right: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.dash-nav-section {
+    padding: 0 12px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 12px;
+}
+
+.dash-nav-section:last-child {
+    border-bottom: none;
+}
+
+.dash-nav-heading {
+    font-family: monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--wheat-300, #d6b95f);
+    padding: 6px 12px;
+    display: block;
+}
+
+.dash-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 12px;
+    color: #dedccf;
+    text-decoration: none;
+    font-size: 13.5px;
+    border-radius: 4px;
+    transition: background .15s ease, color .15s ease;
+}
+
+.dash-nav-link:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.dash-nav-link.active {
+    background: #768047;
+    color: #fff;
+    font-weight: 600;
+}
+
+.dash-nav-icon-svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex-shrink: 0;
+    opacity: 0.8;
+}
+
+.dash-nav-text {
+    flex: 1;
+}
+
+.dash-nav-badge {
+    background: #c6a743;
+    color: #061b0f;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+}
+
+/* Collapsed Sidebar */
+body.sidebar-collapsed .dash-sidebar {
+    width: var(--sidebar-collapsed-width);
+}
+body.sidebar-collapsed .dash-nav-heading,
+body.sidebar-collapsed .dash-nav-text,
+body.sidebar-collapsed .dash-nav-badge {
+    display: none;
+}
+body.sidebar-collapsed .dash-nav-link {
+    justify-content: center;
+    padding: 12px;
+}
+body.sidebar-collapsed .dash-main-content {
+    margin-left: var(--sidebar-collapsed-width);
+}
+
+/* --------------------------------------------------------------------------
+   MAIN CONTENT & CLEAN SECTIONS (NO ACCORDIONS)
+   -------------------------------------------------------------------------- */
+.dash-main-content {
+    margin-left: var(--sidebar-width);
+    padding-top: calc(var(--topbar-height) + 24px);
+    padding-bottom: 70px;
+    padding-left: 32px;
+    padding-right: 32px;
+    min-height: 100vh;
+    box-sizing: border-box;
+    transition: margin-left .25s ease;
+}
+
+.dash-content-wrap {
+    width: min(1200px, 100%);
+    margin: 0 auto;
+}
+
+.dash-hero-banner {
+    background: #0d2818;
+    color: #f5f0df;
+    padding: 28px 32px;
+    border: 1px solid #142216;
+    margin-bottom: 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.dash-hero-banner h1 {
+    font-family: Georgia, serif;
+    font-size: clamp(24px, 3.5vw, 34px);
+    margin: 4px 0 8px;
+    color: #f5f0df;
+}
+
+.dash-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 35px;
+}
+
+.dash-metric-card {
+    background: #fff;
+    border: 1px solid #ded6b9;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.dash-metric-icon {
+    width: 44px;
+    height: 44px;
+    background: #f5f0df;
+    border: 1px solid #d8d0b7;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.dash-metric-icon svg {
+    width: 20px;
+    height: 20px;
+    stroke: #768047;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.dash-metric-info .label {
+    font-family: monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #768047;
+}
+
+.dash-metric-info .val {
+    font-family: Georgia, serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: #122017;
+    margin: 4px 0 0;
+}
+
+/* Clean Dashboard Sections (Standard direct layout, no dropdown accordions) */
+.dash-section {
+    background: #fff;
+    border: 1px solid #ded6b9;
+    margin-bottom: 28px;
+    padding: 28px 30px;
+}
+
+.dash-section-header {
+    border-bottom: 1px solid #eee8d5;
+    padding-bottom: 14px;
+    margin-bottom: 20px;
+}
+
+.dash-section-header h2 {
+    font-family: Georgia, serif;
+    font-size: 22px;
+    margin: 0 0 4px;
+    color: #122017;
+}
+
+.dash-section-header p {
+    font-size: 13px;
+    color: #686454;
+    margin: 0;
+}
+
+.dash-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+}
+
+.dash-feature-card {
+    background: #fdfbf7;
+    border: 1px solid #ded6b9;
+    padding: 20px;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.dash-feature-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+}
+
+.dash-feature-card h3 {
+    font-family: Georgia, serif;
+    font-size: 17px;
+    margin: 6px 0 6px;
+    color: #122017;
+}
+
+.dash-feature-card p {
+    font-size: 13px;
+    color: #6b6a59;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.dash-feature-card .card-arrow {
+    margin-top: 14px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #415535;
+    font-family: monospace;
+    text-transform: uppercase;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .dash-sidebar {
+        transform: translateX(-100%);
+    }
+    body.sidebar-open .dash-sidebar {
+        transform: translateX(0);
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.4);
+    }
+    .dash-main-content {
+        margin-left: 0 !important;
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+}

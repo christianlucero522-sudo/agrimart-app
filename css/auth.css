@@ -1,0 +1,157 @@
+/* ==========================================================================
+   AgriMart Authentication Stylesheet (auth.css)
+   ========================================================================== */
+
+body {
+    min-height: 100vh;
+    background: var(--forest-950, #061b0f);
+}
+
+.auth-page {
+    min-height: 100vh;
+    padding: 110px 20px 70px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    background:
+        repeating-linear-gradient(
+            100deg,
+            transparent 0,
+            transparent 58px,
+            rgba(255, 255, 255, 0.025) 59px,
+            rgba(255, 255, 255, 0.025) 60px
+        ),
+        var(--forest-950, #061b0f);
+}
+
+.auth-card {
+    width: min(580px, 100%);
+    margin: 0 auto;
+    padding: 44px 50px 42px;
+    background: var(--cream-50, #f5f0df);
+    border: 1px solid #ded6b9;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+    box-sizing: border-box;
+    color: #142216;
+}
+
+.auth-card h1 {
+    margin: 0 0 12px;
+    font-family: Georgia, serif;
+    font-size: clamp(30px, 4vw, 40px);
+    line-height: 1.1;
+    color: #122017;
+}
+
+.auth-intro {
+    margin: 0 0 28px;
+    color: #6b6656;
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+.field {
+    margin-bottom: 20px;
+}
+
+.field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.field label {
+    display: block;
+    margin-bottom: 8px;
+    font-family: monospace;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #555845;
+    font-weight: 600;
+}
+
+.field input,
+.field select,
+.field textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 13px 15px;
+    border: 1px solid #d4c79c;
+    background: #ffffff;
+    color: #141b13;
+    font: inherit;
+    font-size: 14px;
+    outline: none;
+    transition: border-color .2s ease, box-shadow .2s ease;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+    border-color: #c6a743;
+    box-shadow: 0 0 0 2px rgba(198, 167, 67, 0.2);
+}
+
+.field-hint {
+    display: block;
+    font-size: 12px;
+    color: #7a7664;
+    margin-top: 5px;
+}
+
+.alert {
+    margin-bottom: 22px;
+    padding: 14px 16px;
+    border: 1px solid;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.alert-error {
+    border-color: #efb7aa;
+    background: #fae6df;
+    color: #a54129;
+}
+
+.alert-success {
+    border-color: #c5ddb4;
+    background: #e0edd5;
+    color: #23581c;
+}
+
+.btn-block {
+    width: 100%;
+    margin-top: 10px;
+    padding: 16px;
+    border: 0;
+    cursor: pointer;
+    font-family: monospace;
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.auth-switch {
+    margin: 28px 0 0;
+    text-align: center;
+    color: #6b6656;
+    font-size: 14px;
+}
+
+.auth-switch a {
+    color: #122017;
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+    .auth-card {
+        padding: 32px 20px 28px;
+    }
+    .field-row {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+}
