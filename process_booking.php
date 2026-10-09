@@ -74,25 +74,58 @@ if ($ownerId === $userId) {
     exit;
 }
 
-// Calculate days and total
+// Calculate days or hours and total (Return date must be valid and not before today)
+$todayTimestamp = strtotime(date('Y-m-d'));
 $t1 = strtotime($startDate);
-$t2 = strtotime($endDate);
-if ($t2 < $t1) {
-    $t2 = $t1;
-    $endDate = $startDate;
-}
+$t2 = !empty($endDate) ? strtotime($endDate) : $t1;
 
-$days = max(1, (int)round(($t2 - $t1) / 86400) + 1);
-$rate = (float)$equip['rate_price'];
-$totalAmount = $days * $rate;
+$isHourly = in_array(strtolower($equip['rate_type'] ?? ''), ['hourly', 'hour']);
+$rentalHours = null;
+
+if ($isHourly) {
+    $rentalHours = max(1, (int)($_POST['rental_hours'] ?? 1));
+    if ($t1 < $todayTimestamp) {
+        $_SESSION['booking_error'] = 'Invalid start date: Start date cannot be in the past.';
+        header("Location: equipment_details.php?id=$equipmentId");
+        exit;
+    }
+    // For hourly, set end_date corresponding to hours (if >= 24 hours spans days)
+    $extraDays = (int)floor($rentalHours / 24);
+    $endDate = date('Y-m-d', strtotime("$startDate +$extraDays days"));
+
+    $rate = (float)$equip['rate_price'];
+    $rentalSubtotal = $rentalHours * $rate;
+    $securityDeposit = round($rentalSubtotal * 0.20, 2);
+    $totalAmount = $rentalSubtotal + $securityDeposit;
+    $scheduleText = "$startDate ($rentalHours " . ($rentalHours === 1 ? 'hour' : 'hours') . ")";
+} else {
+    if ($t1 < $todayTimestamp) {
+        $_SESSION['booking_error'] = 'Invalid start date: Start date cannot be in the past.';
+        header("Location: equipment_details.php?id=$equipmentId");
+        exit;
+    }
+
+    if ($t2 <= $t1) {
+        $_SESSION['booking_error'] = 'Invalid return date: The return date must be at least the next day following the start date.';
+        header("Location: equipment_details.php?id=$equipmentId");
+        exit;
+    }
+
+    $days = max(1, (int)round(($t2 - $t1) / 86400));
+    $rate = (float)$equip['rate_price'];
+    $rentalSubtotal = $days * $rate;
+    $securityDeposit = round($rentalSubtotal * 0.20, 2);
+    $totalAmount = $rentalSubtotal + $securityDeposit;
+    $scheduleText = "from $startDate to $endDate ($days " . ($days === 1 ? 'day' : 'days') . ")";
+}
 
 $conn->begin_transaction();
 
 try {
-    // 1. Insert Booking
-    $bSql = "INSERT INTO bookings (equipment_id, renter_id, owner_id, pickup_location, dropoff_location, booking_date, start_date, end_date, total_amount, status) VALUES (?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, 'pending')";
+    // 1. Insert Booking (Includes rental_hours and 20% Refundable Security Deposit)
+    $bSql = "INSERT INTO bookings (equipment_id, renter_id, owner_id, pickup_location, dropoff_location, booking_date, start_date, end_date, rental_hours, total_amount, security_deposit, status) VALUES (?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, 'pending')";
     $bStmt = $conn->prepare($bSql);
-    $bStmt->bind_param('iiissssd', $equipmentId, $userId, $ownerId, $pickupLocation, $dropoffLocation, $startDate, $endDate, $totalAmount);
+    $bStmt->bind_param('iiissssidd', $equipmentId, $userId, $ownerId, $pickupLocation, $dropoffLocation, $startDate, $endDate, $rentalHours, $totalAmount, $securityDeposit);
     $bStmt->execute();
     $bookingId = $conn->insert_id;
     $bStmt->close();
@@ -109,7 +142,7 @@ try {
 
     // 3. Notify Owner
     $ownerTitle = "New Rental Booking #$bookingId";
-    $ownerMsg = "A user has requested to rent your " . $equip['equipment_name'] . " from $startDate to $endDate. Please review the request and payment.";
+    $ownerMsg = "A user has requested to rent your " . $equip['equipment_name'] . " $scheduleText. Total fee: ₱" . number_format($totalAmount, 2) . " (Includes ₱" . number_format($securityDeposit, 2) . " 20% security deposit for damage/loss). Please review the request.";
     $n1 = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'booking', ?)");
     $n1->bind_param('issi', $ownerId, $ownerTitle, $ownerMsg, $bookingId);
     $n1->execute();
@@ -117,7 +150,7 @@ try {
 
     // 4. Notify Renter
     $renterTitle = "Rental Request #$bookingId Submitted";
-    $renterMsg = "Your booking request for " . $equip['equipment_name'] . " has been submitted. Total amount: ₱" . number_format($totalAmount, 2);
+    $renterMsg = "Your booking request for " . $equip['equipment_name'] . " ($scheduleText) has been submitted. Total amount: ₱" . number_format($totalAmount, 2) . " (Includes ₱" . number_format($securityDeposit, 2) . " 20% refundable damage deposit).";
     $n2 = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'booking', ?)");
     $n2->bind_param('issi', $userId, $renterTitle, $renterMsg, $bookingId);
     $n2->execute();

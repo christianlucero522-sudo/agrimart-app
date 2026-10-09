@@ -1,0 +1,8 @@
+.git
+.gitignore
+.htaccess
+uploads/mail_logs/
+uploads/sms_logs/
+database/*.sql
+*.zip
+*.log

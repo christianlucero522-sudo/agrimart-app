@@ -40,7 +40,7 @@ $sellers = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Sellers & Owners ? AgriMart Admin</title>
+    <title>Manage Sellers & Owners — AgriMart Admin</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         body { margin: 0; background: #f4f0df; color: #162018; }
@@ -72,6 +72,7 @@ $sellers = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
         <a href="admin_listings.php">Listings</a>
         <a href="admin_rentals.php">Rentals</a>
         <a href="admin_sales.php">Sales</a>
+        <a href="admin_moderation.php">Reports & Moderation</a>
         <a href="admin_reports.php">Reports</a>
     </nav>
     <div class="header-actions">
@@ -87,7 +88,7 @@ $sellers = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
             <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Merchant Supervision</span>
             <h1>Manage Sellers & Equipment Owners</h1>
         </div>
-        <a href="admin_dashboard.php" class="btn btn-light">? Back to Dashboard</a>
+        <a href="admin_dashboard.php" class="btn btn-light">← Back to Dashboard</a>
     </div>
 
     <div class="table-panel">
@@ -114,7 +115,7 @@ $sellers = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
                             <td><?= htmlspecialchars($s['email']) ?><br><small style="color:#777;"><?= htmlspecialchars($s['phone'] ?: 'No phone') ?></small></td>
                             <td><strong><?= (int)$s['total_products'] ?></strong> product(s)</td>
                             <td><strong><?= (int)$s['total_equipment'] ?></strong> machine(s)</td>
-                            <td><strong style="color:var(--forest-900);">?<?= number_format((float)$s['total_sales_volume'], 2) ?></strong></td>
+                            <td><strong style="color:var(--forest-900);">₱<?= number_format((float)$s['total_sales_volume'], 2) ?></strong></td>
                             <td><strong><?= (int)$s['total_rentals_received'] ?></strong> rental(s)</td>
                             <td><span class="badge badge-<?= htmlspecialchars($s['status']) ?>"><?= htmlspecialchars(ucfirst($s['status'])) ?></span></td>
                             <td>
@@ -139,7 +140,7 @@ $sellers = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
 <footer class="site-footer">
 <div class="wrap">
     <div class="footer-bottom">
-        <span>? 2026 AgriMart Administration. All rights reserved.</span>
+        <span>© 2026 AgriMart Administration. All rights reserved.</span>
         <span>Digital Market Platform on Agricultural Products</span>
     </div>
 </div>

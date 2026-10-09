@@ -28,7 +28,7 @@ $sql = "
         (SELECT COUNT(*) FROM bookings WHERE equipment_id = e.equipment_id) AS total_bookings
     FROM equipment e
     INNER JOIN categories c ON e.category_id = c.category_id
-    WHERE e.user_id = ?
+    WHERE e.user_id = ? AND e.status != 'deleted' AND e.status != 'archived'
     ORDER BY e.equipment_id DESC
 ";
 $stmt = $conn->prepare($sql);
@@ -47,7 +47,7 @@ $stmt->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Equipment Listings ? AgriMart</title>
+    <title>My Equipment Listings — AgriMart</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         body { margin: 0; background: #f4f0df; color: #162018; }
@@ -71,7 +71,7 @@ $stmt->close();
 </head>
 <body>
 
-<header class="site-header">
+<header class="site-header is-solid" id="siteHeader">
 <div class="wrap">
     <a href="index.php" class="logo">
         <span class="logo-text"><b>AgriMart</b><span>Field to Farm Gate</span></span>
@@ -103,19 +103,25 @@ $stmt->close();
 
     <?php if (isset($_GET['added'])): ?>
         <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:15px; margin-bottom:25px; font-weight:500;">
-            ? Equipment listing created successfully and is now active for rental!
+            ✓ Equipment listing created successfully and is now active for rental!
         </div>
     <?php endif; ?>
 
     <?php if (isset($_GET['updated'])): ?>
         <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:15px; margin-bottom:25px; font-weight:500;">
-            ? Equipment listing updated successfully.
+            ✓ Equipment listing updated successfully.
         </div>
     <?php endif; ?>
 
     <?php if (isset($_GET['toggled'])): ?>
         <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:15px; margin-bottom:25px; font-weight:500;">
-            ? Listing status toggled successfully.
+            ✓ Listing status toggled successfully.
+        </div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['deleted'])): ?>
+        <div style="background:#fae6df; border:1px solid #efb7aa; color:#a54129; padding:15px; margin-bottom:25px; font-weight:500;">
+            ✓ Equipment listing removed successfully.
         </div>
     <?php endif; ?>
 
@@ -147,7 +153,7 @@ $stmt->close();
                             <?= htmlspecialchars(ucfirst($item['status'])) ?>
                         </span>
                         <span style="font-weight:700; font-size:17px; color:var(--forest-900); margin-left:10px;">
-                            ?<?= number_format((float)$item['rate_price'], 2) ?> / <?= htmlspecialchars($item['rate_type']) ?>
+                            ₱<?= number_format((float)$item['rate_price'], 2) ?> / <?= htmlspecialchars($item['rate_type']) ?>
                         </span>
                     </div>
                 </div>
@@ -161,6 +167,12 @@ $stmt->close();
                                 <?= $item['status'] === 'active' ? 'Deactivate' : 'Activate' ?>
                             </button>
                         </form>
+                        <form action="delete_equipment.php" method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to permanently remove <?= addslashes(htmlspecialchars($item['equipment_name'])) ?> from your equipment listings?');">
+                            <input type="hidden" name="equipment_id" value="<?= (int)$item['equipment_id'] ?>">
+                            <button type="submit" class="btn btn-light" style="font-size:12px; padding:10px 14px; background:#fae6df; color:#a54129; border:1px solid #efb7aa; font-weight:700; cursor:pointer;">
+                                ✕ Remove
+                            </button>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -171,7 +183,7 @@ $stmt->close();
 <footer class="site-footer">
 <div class="wrap">
     <div class="footer-bottom">
-        <span>? 2026 AgriMart. All rights reserved.</span>
+        <span>&copy; 2026 AgriMart. All rights reserved.</span>
         <span>Digital Market Platform on Agricultural Products</span>
     </div>
 </div>

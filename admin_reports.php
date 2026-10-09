@@ -80,7 +80,7 @@ $equipmentList = $conn->query("
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Executive System Reports ? AgriMart Admin</title>
+    <title>Executive System Reports — AgriMart Admin</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         body { margin: 0; background: #f4f0df; color: #162018; }
@@ -126,6 +126,7 @@ $equipmentList = $conn->query("
         <a href="admin_listings.php">Listings</a>
         <a href="admin_rentals.php">Rentals</a>
         <a href="admin_sales.php">Sales</a>
+        <a href="admin_moderation.php">Reports & Moderation</a>
         <a href="admin_reports.php" class="active">Reports</a>
     </nav>
     <div class="header-actions">
@@ -142,8 +143,8 @@ $equipmentList = $conn->query("
             <h1>System Performance Reports</h1>
         </div>
         <div class="no-print">
-            <button onclick="window.print()" class="btn btn-solid" style="margin-right:8px;">??? Print / Save as PDF</button>
-            <a href="admin_dashboard.php" class="btn btn-light">? Dashboard</a>
+            <button onclick="window.print()" class="btn btn-solid" style="margin-right:8px;">🖨️ Print / Save as PDF</button>
+            <a href="admin_dashboard.php" class="btn btn-light">← Dashboard</a>
         </div>
     </div>
 
@@ -166,11 +167,11 @@ $equipmentList = $conn->query("
             <div class="metrics-grid">
                 <div class="metric-box">
                     <div class="label">Total Paid Revenue</div>
-                    <div class="val" style="color:var(--forest-900);">?<?= number_format($salesTotal, 2) ?></div>
+                    <div class="val" style="color:var(--forest-900);">₱<?= number_format($salesTotal, 2) ?></div>
                 </div>
                 <div class="metric-box">
                     <div class="label">Pending Payments</div>
-                    <div class="val">?<?= number_format($salesPending, 2) ?></div>
+                    <div class="val">₱<?= number_format($salesPending, 2) ?></div>
                 </div>
                 <div class="metric-box">
                     <div class="label">Total Orders Placed</div>
@@ -196,7 +197,7 @@ $equipmentList = $conn->query("
                         <tr>
                             <td><strong><?= htmlspecialchars(strtoupper($m['payment_method'])) ?></strong></td>
                             <td><?= (int)$m['count'] ?> transaction(s)</td>
-                            <td><strong>?<?= number_format((float)$m['total'], 2) ?></strong></td>
+                            <td><strong>₱<?= number_format((float)$m['total'], 2) ?></strong></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -216,7 +217,7 @@ $equipmentList = $conn->query("
                         <tr>
                             <td><strong><?= htmlspecialchars($tp['product_name']) ?></strong></td>
                             <td><?= (int)$tp['qty_sold'] ?> units</td>
-                            <td><strong style="color:var(--forest-900);">?<?= number_format((float)$tp['total_sales'], 2) ?></strong></td>
+                            <td><strong style="color:var(--forest-900);">₱<?= number_format((float)$tp['total_sales'], 2) ?></strong></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -304,7 +305,7 @@ $equipmentList = $conn->query("
                 </div>
                 <div class="metric-box">
                     <div class="label">Gross Rental Volume</div>
-                    <div class="val" style="color:var(--forest-900);">?<?= number_format($rentalRevenue, 2) ?></div>
+                    <div class="val" style="color:var(--forest-900);">₱<?= number_format($rentalRevenue, 2) ?></div>
                 </div>
             </div>
 
@@ -324,7 +325,7 @@ $equipmentList = $conn->query("
                             <td><strong><?= htmlspecialchars($mr['equipment_name']) ?></strong></td>
                             <td><?= htmlspecialchars($mr['brand'] ?: 'Standard') ?></td>
                             <td><?= (int)$mr['booking_count'] ?> rental(s)</td>
-                            <td><strong style="color:var(--forest-900);">?<?= number_format((float)$mr['total_revenue'], 2) ?></strong></td>
+                            <td><strong style="color:var(--forest-900);">₱<?= number_format((float)$mr['total_revenue'], 2) ?></strong></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -357,7 +358,7 @@ $equipmentList = $conn->query("
                             <td><strong><?= htmlspecialchars($p['product_name']) ?></strong></td>
                             <td><?= htmlspecialchars($p['category_name']) ?></td>
                             <td><?= htmlspecialchars($p['seller_name']) ?></td>
-                            <td>?<?= number_format((float)$p['price'], 2) ?> / <?= htmlspecialchars($p['unit']) ?></td>
+                            <td>₱<?= number_format((float)$p['price'], 2) ?> / <?= htmlspecialchars($p['unit']) ?></td>
                             <td>
                                 <strong style="<?= (int)$p['quantity'] <= 5 ? 'color:#b52b1b;' : 'color:#23581c;' ?>">
                                     <?= (int)$p['quantity'] ?> <?= htmlspecialchars($p['unit']) ?>
@@ -388,7 +389,7 @@ $equipmentList = $conn->query("
                             <td><strong><?= htmlspecialchars($e['equipment_name']) ?></strong> <?php if(!empty($e['brand'])): ?><small style="color:#777;">(<?= htmlspecialchars($e['brand']) ?>)</small><?php endif; ?></td>
                             <td><?= htmlspecialchars($e['category_name']) ?></td>
                             <td><?= htmlspecialchars($e['owner_name']) ?></td>
-                            <td>?<?= number_format((float)$e['rate_price'], 2) ?> / <?= htmlspecialchars($e['rate_type']) ?></td>
+                            <td>₱<?= number_format((float)$e['rate_price'], 2) ?> / <?= htmlspecialchars($e['rate_type']) ?></td>
                             <td><span class="badge badge-<?= htmlspecialchars($e['availability']) ?>"><?= htmlspecialchars(ucfirst($e['availability'])) ?></span></td>
                             <td><span class="badge badge-<?= htmlspecialchars($e['status']) ?>"><?= htmlspecialchars(ucfirst($e['status'])) ?></span></td>
                         </tr>
@@ -402,7 +403,7 @@ $equipmentList = $conn->query("
 <footer class="site-footer">
 <div class="wrap">
     <div class="footer-bottom">
-        <span>? 2026 AgriMart Administration. All rights reserved.</span>
+        <span>© 2026 AgriMart Administration. All rights reserved.</span>
         <span>Digital Market Platform on Agricultural Products</span>
     </div>
 </div>

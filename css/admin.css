@@ -18,6 +18,23 @@ body.admin-body {
     padding: 110px 0 90px;
 }
 
+/* Button overrides for light admin pages */
+.admin-wrap .btn-light,
+.admin-page-head .btn-light,
+.admin-header .btn-light {
+    color: #122017 !important;
+    border-color: #d8d0b7 !important;
+    background: #fff !important;
+}
+
+.admin-wrap .btn-light:hover,
+.admin-page-head .btn-light:hover,
+.admin-header .btn-light:hover {
+    background: #768047 !important;
+    color: #fff !important;
+    border-color: #768047 !important;
+}
+
 .admin-page-head {
     margin-bottom: 30px;
     display: flex;

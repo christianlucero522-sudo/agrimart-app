@@ -135,6 +135,19 @@ if ($product['status'] === 'active') {
 
 } else {
 
+    // Check if seller is verified before allowing activation
+    $uStmt = $conn->prepare("SELECT is_verified FROM users WHERE user_id = ? LIMIT 1");
+    $uStmt->bind_param('i', $userId);
+    $uStmt->execute();
+    $uRow = $uStmt->get_result()->fetch_assoc();
+    $uStmt->close();
+
+    if (($uRow['is_verified'] ?? '') !== 'verified') {
+        $conn->close();
+        header('Location: my_products.php?error=verification_required');
+        exit;
+    }
+
     $newStatus = 'active';
     $message = 'activated';
 

@@ -48,7 +48,7 @@ $rStmt->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Customer & Seller Reviews ? AgriMart</title>
+    <title>Customer & Seller Reviews — AgriMart</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         body { margin: 0; background: #f4f0df; color: #162018; }
@@ -81,7 +81,7 @@ $rStmt->close();
 </header>
 
 <main class="page-wrap">
-    <a href="dashboard.php" style="display:inline-block; margin-bottom:20px; color:var(--forest-900); font-weight:600; text-decoration:none; font-size:14px;">? Back to Dashboard</a>
+    <a href="dashboard.php" style="display:inline-block; margin-bottom:20px; color:var(--forest-900); font-weight:600; text-decoration:none; font-size:14px;">← Back to Dashboard</a>
 
     <div class="page-header">
         <span class="eyebrow" style="color:#768047; font-family:monospace; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Marketplace Reputation</span>
@@ -90,7 +90,7 @@ $rStmt->close();
 
     <?php if (isset($_GET['submitted'])): ?>
         <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:15px; margin-bottom:25px; font-weight:500;">
-            ? Thank you! Your review and star rating has been posted.
+            ✓ Thank you! Your review and star rating has been posted.
         </div>
     <?php endif; ?>
 
@@ -106,7 +106,7 @@ $rStmt->close();
         <?php foreach ($receivedReviews as $rev): ?>
             <div class="review-card">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <div class="star-box"><?= str_repeat('?', (int)$rev['rating']) ?> (<?= (int)$rev['rating'] ?>/5)</div>
+                    <div class="star-box"><?= str_repeat('★', (int)$rev['rating']) ?> (<?= (int)$rev['rating'] ?>/5)</div>
                     <span style="font-size:12px; color:#888;"><?= date('M d, Y', strtotime($rev['created_at'])) ?></span>
                 </div>
                 <div style="font-weight:600; color:#122017; font-size:15px; margin-bottom:6px;">
@@ -134,7 +134,7 @@ $rStmt->close();
         <?php foreach ($myReviews as $rev): ?>
             <div class="review-card">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <div class="star-box"><?= str_repeat('?', (int)$rev['rating']) ?> (<?= (int)$rev['rating'] ?>/5)</div>
+                    <div class="star-box"><?= str_repeat('★', (int)$rev['rating']) ?> (<?= (int)$rev['rating'] ?>/5)</div>
                     <span style="font-size:12px; color:#888;"><?= date('M d, Y', strtotime($rev['created_at'])) ?></span>
                 </div>
                 <div style="font-weight:600; color:#122017; font-size:15px; margin-bottom:6px;">
@@ -151,7 +151,7 @@ $rStmt->close();
 <footer class="site-footer">
 <div class="wrap">
     <div class="footer-bottom">
-        <span>? 2026 AgriMart. All rights reserved.</span>
+        <span>© 2026 AgriMart. All rights reserved.</span>
         <span>Digital Market Platform on Agricultural Products</span>
     </div>
 </div>

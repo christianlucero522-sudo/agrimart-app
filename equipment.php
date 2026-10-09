@@ -17,78 +17,83 @@ $role = $_SESSION['role'] ?? '';
 $firstName = '';
 
 if ($fullName !== '') {
-
-    $parts = explode(
-        ' ',
-        trim($fullName)
-    );
-
+    $parts = explode(' ', trim($fullName));
     $firstName = $parts[0];
 }
 
+// Fetch Renter Address for Nearest Location Calculation
+$userCity = '';
+$userProvince = '';
+$userBarangay = '';
+if ($isLoggedIn) {
+    $userId = (int)$_SESSION['user_id'];
+    $uAddrStmt = $conn->prepare("SELECT city_municipality, province, barangay FROM addresses WHERE user_id = ? LIMIT 1");
+    if ($uAddrStmt) {
+        $uAddrStmt->bind_param('i', $userId);
+        $uAddrStmt->execute();
+        $uAddrRow = $uAddrStmt->get_result()->fetch_assoc();
+        if ($uAddrRow) {
+            $userCity = trim($uAddrRow['city_municipality'] ?? '');
+            $userProvince = trim($uAddrRow['province'] ?? '');
+            $userBarangay = trim($uAddrRow['barangay'] ?? '');
+        }
+        $uAddrStmt->close();
+    }
+}
 
 /* =========================================================
    SEARCH / FILTER VALUES
 ========================================================= */
 
-$search = trim(
-    $_GET['search'] ?? ''
-);
-
-$categoryId = isset($_GET['category'])
-    ? (int) $_GET['category']
-    : 0;
-
-$availability = trim(
-    $_GET['availability'] ?? ''
-);
-
+$search = trim($_GET['search'] ?? '');
+$categoryId = isset($_GET['category']) ? (int) $_GET['category'] : 0;
+$availability = trim($_GET['availability'] ?? '');
+$filterLocation = trim($_GET['location'] ?? '');
+$sortNearest = isset($_GET['nearest']) ? (int)$_GET['nearest'] : ($isLoggedIn && !empty($userCity) ? 1 : 0);
+$referenceCity = !empty($filterLocation) ? $filterLocation : $userCity;
+$referenceProvince = $userProvince;
 
 /* =========================================================
-   GET EQUIPMENT CATEGORIES
+   GET EQUIPMENT CATEGORIES & LOCATIONS
 ========================================================= */
 
 $categories = [];
-
 $categorySql = "
-    SELECT
-        category_id,
-        category_name
-
+    SELECT category_id, category_name
     FROM categories
-
     WHERE category_type = 'equipment'
-
     ORDER BY category_name ASC
 ";
-
-
-$categoryResult = $conn->query(
-    $categorySql
-);
-
-
+$categoryResult = $conn->query($categorySql);
 if ($categoryResult) {
-
-    while (
-        $category = $categoryResult->fetch_assoc()
-    ) {
-
+    while ($category = $categoryResult->fetch_assoc()) {
         $categories[] = $category;
-
     }
-
 }
 
+$locations = [];
+$locRes = $conn->query("
+    SELECT DISTINCT COALESCE(NULLIF(e.location_city, ''), a.city_municipality) AS city,
+           COALESCE(NULLIF(e.location_province, ''), a.province) AS province
+    FROM equipment e
+    INNER JOIN users u ON e.user_id = u.user_id
+    LEFT JOIN addresses a ON u.user_id = a.user_id
+    WHERE e.status = 'active'
+    HAVING city IS NOT NULL AND city != ''
+    ORDER BY city ASC
+");
+if ($locRes) {
+    while ($l = $locRes->fetch_assoc()) {
+        $locations[] = $l;
+    }
+}
 
 /* =========================================================
-   BUILD EQUIPMENT QUERY
+   BUILD EQUIPMENT QUERY WITH NEAREST LOCATION
 ========================================================= */
 
 $sql = "
-
     SELECT
-
         e.equipment_id,
         e.equipment_name,
         e.description,
@@ -99,36 +104,28 @@ $sql = "
         e.availability,
         e.image_url,
         e.status,
-
+        COALESCE(NULLIF(e.location_city, ''), a.city_municipality, 'San Fernando') AS location_city,
+        COALESCE(NULLIF(e.location_province, ''), a.province, 'Pampanga') AS location_province,
+        a.barangay AS owner_barangay,
         c.category_name,
-
         u.full_name AS owner_name
-
     FROM equipment e
-
-    INNER JOIN categories c
-        ON e.category_id = c.category_id
-
-    INNER JOIN users u
-        ON e.user_id = u.user_id
-
+    INNER JOIN categories c ON e.category_id = c.category_id
+    INNER JOIN users u ON e.user_id = u.user_id
+    LEFT JOIN addresses a ON u.user_id = a.user_id
     WHERE e.status = 'active'
       AND c.category_type = 'equipment'
       AND u.status = 'active'
-
 ";
-
 
 $params = [];
 $types = '';
-
 
 /* =========================================================
    SEARCH FILTER
 ========================================================= */
 
 if ($search !== '') {
-
     $sql .= "
         AND (
             e.equipment_name LIKE ?
@@ -138,79 +135,72 @@ if ($search !== '') {
             OR u.full_name LIKE ?
         )
     ";
-
-
-    $searchValue =
-        '%' . $search . '%';
-
-
+    $searchValue = '%' . $search . '%';
     $params[] = $searchValue;
     $params[] = $searchValue;
     $params[] = $searchValue;
     $params[] = $searchValue;
     $params[] = $searchValue;
-
     $types .= 'sssss';
-
 }
-
 
 /* =========================================================
    CATEGORY FILTER
 ========================================================= */
 
 if ($categoryId > 0) {
-
-    $sql .= "
-        AND e.category_id = ?
-    ";
-
-
+    $sql .= " AND e.category_id = ? ";
     $params[] = $categoryId;
-
     $types .= 'i';
-
 }
-
 
 /* =========================================================
    AVAILABILITY FILTER
 ========================================================= */
 
-$allowedAvailability = [
-    'available',
-    'rented',
-    'maintenance'
-];
-
-
-if (
-    in_array(
-        $availability,
-        $allowedAvailability,
-        true
-    )
-) {
-
-    $sql .= "
-        AND e.availability = ?
-    ";
-
-
+$allowedAvailability = ['available', 'rented', 'maintenance'];
+if (in_array($availability, $allowedAvailability, true)) {
+    $sql .= " AND e.availability = ? ";
     $params[] = $availability;
-
     $types .= 's';
-
 }
 
-
 /* =========================================================
-   ORDER
+   LOCATION FILTER
 ========================================================= */
 
-$sql .= "
-    ORDER BY e.created_at DESC
-";
+if ($filterLocation !== '') {
+    $sql .= " AND (e.location_city LIKE ? OR a.city_municipality LIKE ? OR e.location_province LIKE ? OR a.province LIKE ?) ";
+    $locVal = '%' . $filterLocation . '%';
+    $params[] = $locVal;
+    $params[] = $locVal;
+    $params[] = $locVal;
+    $params[] = $locVal;
+    $types .= 'ssss';
+}
+
+/* =========================================================
+   ORDER / NEAREST LOCATION SORTING
+========================================================= */
+
+if ($sortNearest && !empty($referenceCity)) {
+    $sql .= "
+        ORDER BY 
+            CASE 
+                WHEN (COALESCE(NULLIF(e.location_city, ''), a.city_municipality) LIKE ?) THEN 1
+                WHEN (COALESCE(NULLIF(e.location_province, ''), a.province) LIKE ?) THEN 2
+                ELSE 3 
+            END ASC, 
+            e.created_at DESC
+    ";
+    $cityMatch = '%' . $referenceCity . '%';
+    $provMatch = !empty($referenceProvince) ? ('%' . $referenceProvince . '%') : $cityMatch;
+    $params[] = $cityMatch;
+    $params[] = $provMatch;
+    $types .= 'ss';
+} else {
+    $sql .= " ORDER BY e.created_at DESC ";
+}
 
 
 /* =========================================================
@@ -1333,8 +1323,33 @@ function getEquipmentImage($imageUrl)
             </select>
 
 
-            <!-- SEARCH BUTTON -->
+            <!-- LOCATION FILTER -->
+            <select name="location" onchange="this.form.submit()">
+                <option value="">All Locations</option>
+                <?php foreach ($locations as $loc): ?>
+                    <option
+                        value="<?= htmlspecialchars($loc['city'], ENT_QUOTES, 'UTF-8') ?>"
+                        <?= (strcasecmp($filterLocation, $loc['city']) === 0) ? 'selected' : '' ?>
+                    >
+                        📍 <?= htmlspecialchars($loc['city'], ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars($loc['province'], ENT_QUOTES, 'UTF-8') ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
 
+            <!-- NEAREST SORTING TOGGLE -->
+            <label style="display:inline-flex; align-items:center; gap:8px; background:#fff; border:1px solid rgba(17,55,36,.25); padding:0 16px; min-height:50px; cursor:pointer; font-size:13.5px; color:var(--forest-900);">
+                <input
+                    type="checkbox"
+                    name="nearest"
+                    value="1"
+                    <?= $sortNearest ? 'checked' : '' ?>
+                    onchange="this.form.submit()"
+                    style="accent-color:#768047; width:17px; height:17px; cursor:pointer;"
+                >
+                <span>📍 Show Nearest to Me <?= !empty($referenceCity) ? '(' . htmlspecialchars($referenceCity) . ')' : '' ?></span>
+            </label>
+
+            <!-- SEARCH BUTTON -->
             <button
                 type="submit"
                 class="btn btn-dark"
@@ -1342,115 +1357,92 @@ function getEquipmentImage($imageUrl)
                 Search
             </button>
 
-
-
             <?php if (
                 $search !== '' ||
                 $categoryId > 0 ||
-                $availability !== ''
+                $availability !== '' ||
+                $filterLocation !== ''
             ): ?>
-
-
                 <a
                     href="equipment.php#catalog"
                     class="clear-filter"
                 >
                     Clear Filters
                 </a>
-
-
             <?php endif; ?>
-
 
         </form>
 
-
     </div>
 
-
+    <!-- =====================================================
+         NEAREST LOCATION ACTIVE BANNER
+    ====================================================== -->
+    <?php if ($sortNearest && !empty($referenceCity)): ?>
+        <div style="background:#e8eedf; border:1px solid #cbd8bd; padding:14px 22px; margin-bottom:28px; border-radius:3px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:22px;">🎯</span>
+                <div>
+                    <strong style="color:#23581c; font-size:14.5px; display:block;">Nearest Available Equipment Mode:</strong>
+                    <span style="color:#122017; font-size:13.5px;">Displaying machinery located in <strong><?= htmlspecialchars($referenceCity) ?><?= !empty($referenceProvince) ? ', ' . htmlspecialchars($referenceProvince) : '' ?></strong> and surrounding areas first.</span>
+                </div>
+            </div>
+            <a href="equipment.php?nearest=0#catalog" style="font-size:12.5px; color:#495c37; font-weight:600; text-decoration:underline;">Turn off nearest sorting</a>
+        </div>
+    <?php endif; ?>
 
     <!-- =====================================================
          EQUIPMENT COUNT
     ====================================================== -->
 
     <p class="equipment-count">
-
         <?= $equipmentResult->num_rows ?>
-
         <?=
-
             $equipmentResult->num_rows === 1
-
                 ? 'equipment listing found'
-
                 : 'equipment listings found'
-
         ?>
-
     </p>
-
-
 
     <!-- =====================================================
          EQUIPMENT GRID
     ====================================================== -->
 
-    <?php if (
-        $equipmentResult->num_rows > 0
-    ): ?>
-
+    <?php if ($equipmentResult->num_rows > 0): ?>
 
         <div class="equipment-grid">
 
-
-            <?php while (
-                $equipment =
-                    $equipmentResult->fetch_assoc()
-            ): ?>
-
+            <?php while ($equipment = $equipmentResult->fetch_assoc()): ?>
+                <?php 
+                $isNearestCity = !empty($referenceCity) && (stripos($equipment['location_city'], $referenceCity) !== false || stripos($referenceCity, $equipment['location_city']) !== false);
+                $isNearbyProv = !empty($referenceProvince) && (stripos($equipment['location_province'], $referenceProvince) !== false);
+                ?>
 
                 <article class="equipment-card">
-
 
                     <!-- =====================================
                          IMAGE
                     ====================================== -->
-
                     <div class="equipment-card-media">
-
-
                         <img
-
                             src="<?= htmlspecialchars(
-                                getEquipmentImage(
-                                    $equipment['image_url']
-                                ),
+                                getEquipmentImage($equipment['image_url']),
                                 ENT_QUOTES,
                                 'UTF-8'
                             ) ?>"
-
                             alt="<?= htmlspecialchars(
                                 $equipment['equipment_name'],
                                 ENT_QUOTES,
                                 'UTF-8'
                             ) ?>"
-
                         >
-
-
-
                         <span class="equipment-tag">
-
                             <?= htmlspecialchars(
                                 $equipment['category_name'],
                                 ENT_QUOTES,
                                 'UTF-8'
                             ) ?>
-
                         </span>
-
-
-
                         <span
                             class="availability-tag availability-<?= htmlspecialchars(
                                 $equipment['availability'],
@@ -1458,163 +1450,100 @@ function getEquipmentImage($imageUrl)
                                 'UTF-8'
                             ) ?>"
                         >
-
                             <?= htmlspecialchars(
-                                ucfirst(
-                                    $equipment['availability']
-                                ),
+                                ucfirst($equipment['availability']),
                                 ENT_QUOTES,
                                 'UTF-8'
                             ) ?>
-
                         </span>
-
-
                     </div>
-
-
 
                     <!-- =====================================
                          BODY
                     ====================================== -->
-
                     <div class="equipment-card-body">
 
-
-                        <span class="equipment-owner">
-
-                            Owner:
-
-                            <?= htmlspecialchars(
-                                $equipment['owner_name'],
-                                ENT_QUOTES,
-                                'UTF-8'
-                            ) ?>
-
-                        </span>
-
-
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+                            <span class="equipment-owner">
+                                Owner: <?= htmlspecialchars($equipment['owner_name'], ENT_QUOTES, 'UTF-8') ?>
+                            </span>
+                            <?php if ($isNearestCity): ?>
+                                <span style="background:#d7ecc7; color:#1b4f15; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:10px; display:inline-flex; align-items:center; gap:3px;">
+                                    🎯 Nearest to You
+                                </span>
+                            <?php elseif ($isNearbyProv): ?>
+                                <span style="background:#eef4ea; color:#3b6e31; font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:10px;">
+                                    📍 Nearby
+                                </span>
+                            <?php endif; ?>
+                        </div>
 
                         <h3>
-
                             <?= htmlspecialchars(
                                 $equipment['equipment_name'],
                                 ENT_QUOTES,
                                 'UTF-8'
                             ) ?>
-
                         </h3>
 
-
+                        <!-- LOCATION PILL -->
+                        <div style="margin-bottom:12px;">
+                            <span style="display:inline-flex; align-items:center; gap:4px; font-size:12.5px; color:#3b4737; background:#ede8d3; padding:4px 10px; border-radius:3px; font-weight:600;">
+                                📍 <?= htmlspecialchars($equipment['location_city'], ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars($equipment['location_province'], ENT_QUOTES, 'UTF-8') ?>
+                            </span>
+                        </div>
 
                         <!-- BRAND / MODEL -->
-
                         <?php if (
                             !empty($equipment['brand']) ||
                             !empty($equipment['model'])
                         ): ?>
-
-
                             <div class="equipment-brand">
-
-
-                                <?php if (
-                                    !empty($equipment['brand'])
-                                ): ?>
-
-                                    <?= htmlspecialchars(
-                                        $equipment['brand'],
-                                        ENT_QUOTES,
-                                        'UTF-8'
-                                    ) ?>
-
+                                <?php if (!empty($equipment['brand'])): ?>
+                                    <?= htmlspecialchars($equipment['brand'], ENT_QUOTES, 'UTF-8') ?>
                                 <?php endif; ?>
-
-
-                                <?php if (
-                                    !empty($equipment['model'])
-                                ): ?>
-
-                                    <?= htmlspecialchars(
-                                        $equipment['model'],
-                                        ENT_QUOTES,
-                                        'UTF-8'
-                                    ) ?>
-
+                                <?php if (!empty($equipment['model'])): ?>
+                                    <?= htmlspecialchars($equipment['model'], ENT_QUOTES, 'UTF-8') ?>
                                 <?php endif; ?>
-
-
                             </div>
-
-
                         <?php endif; ?>
 
-
-
                         <!-- DESCRIPTION -->
-
                         <div class="equipment-description">
-
                             <?= htmlspecialchars(
-                                $equipment['description']
-                                    ?? 'No description available.',
+                                $equipment['description'] ?? 'No description available.',
                                 ENT_QUOTES,
                                 'UTF-8'
                             ) ?>
-
                         </div>
-
-
 
                         <!-- =================================
                              FOOTER
                         ================================== -->
-
                         <div class="equipment-card-footer">
-
-
                             <div class="equipment-price">
-
-                                ₱<?= number_format(
-                                    (float) $equipment['rate_price'],
-                                    2
-                                ) ?>
-
-
+                                ₱<?= number_format((float) $equipment['rate_price'], 2) ?>
                                 <small>
-
-                                    per
-                                    <?= htmlspecialchars(
-                                        $equipment['rate_type'],
-                                        ENT_QUOTES,
-                                        'UTF-8'
-                                    ) ?>
-
+                                    per <?= htmlspecialchars($equipment['rate_type'], ENT_QUOTES, 'UTF-8') ?>
                                 </small>
-
+                                <span style="display:block; font-size:10px; color:#d6b95f; font-family:monospace; margin-top:3px; letter-spacing:0.3px;">
+                                    🛡️ +20% Deposit
+                                </span>
                             </div>
-
-
 
                             <a
                                 href="equipment_details.php?id=<?= (int) $equipment['equipment_id'] ?>"
                                 class="btn btn-dark"
                             >
-                                View
+                                View Details
                             </a>
-
-
                         </div>
-
 
                     </div>
 
-
                 </article>
 
-
             <?php endwhile; ?>
-
 
         </div>
 
