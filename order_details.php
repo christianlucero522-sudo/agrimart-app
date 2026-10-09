@@ -157,7 +157,7 @@ $itemStmt->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order #<?= (int)$order['order_id'] ?> ? AgriMart</title>
+    <title>Order #<?= (int)$order['order_id'] ?> — AgriMart</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         body { margin: 0; background: #f4f0df; color: #162018; }
@@ -208,17 +208,17 @@ $itemStmt->close();
 </header>
 
 <main class="page-wrap">
-    <a href="orders.php" class="back-link">? Back to My Orders</a>
+    <a href="orders.php" class="back-link">← Back to My Orders</a>
 
     <?php if (isset($_GET['placed'])): ?>
         <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:16px 20px; margin-bottom:25px; font-weight:500;">
-            ? Success! Your order #<?= (int)$order['order_id'] ?> has been placed successfully. The seller has been notified.
+            ✓ Success! Your order #<?= (int)$order['order_id'] ?> has been placed successfully. The seller has been notified.
         </div>
     <?php endif; ?>
 
     <?php if (isset($_GET['cancelled'])): ?>
         <div style="background:#f7dcd6; border:1px solid #efb7aa; color:#7e2b1b; padding:16px 20px; margin-bottom:25px; font-weight:500;">
-            ? Order #<?= (int)$order['order_id'] ?> has been cancelled.
+            ✓ Order #<?= (int)$order['order_id'] ?> has been cancelled.
         </div>
     <?php endif; ?>
 
@@ -257,18 +257,18 @@ $itemStmt->close();
                             <div style="font-weight:600; color:#122017; font-size:15px;"><?= htmlspecialchars($item['product_name']) ?></div>
                             <div style="color:#6b6a59; font-size:12px; margin-top:3px;">
                                 Seller: <strong><?= htmlspecialchars($item['seller_name'] ?? 'AgriMart Farmer') ?></strong> |
-                                Qty: <strong><?= (int)$item['quantity'] ?> <?= htmlspecialchars($item['unit'] ?? '') ?></strong> ? ?<?= number_format((float)$item['price'], 2) ?>
+                                Qty: <strong><?= (int)$item['quantity'] ?> <?= htmlspecialchars($item['unit'] ?? '') ?></strong> × ₱<?= number_format((float)$item['price'], 2) ?>
                             </div>
                         </div>
                         <div style="font-weight:700; color:var(--forest-900); font-size:16px;">
-                            ?<?= number_format((float)$item['subtotal'], 2) ?>
+                            ₱<?= number_format((float)$item['subtotal'], 2) ?>
                         </div>
                     </div>
                 <?php endforeach; ?>
 
                 <div style="display:flex; justify-content:space-between; margin-top:20px; padding-top:15px; border-top:2px solid #122017; font-size:20px; font-weight:700;">
                     <span>Grand Total</span>
-                    <span style="color:var(--forest-900);">?<?= number_format((float)$order['total_amount'], 2) ?></span>
+                    <span style="color:var(--forest-900);">₱<?= number_format((float)$order['total_amount'], 2) ?></span>
                 </div>
             </div>
 
@@ -276,7 +276,7 @@ $itemStmt->close();
                 <div class="panel" style="background:#f9f7f0;">
                     <h2>Share Your Feedback</h2>
                     <p style="color:#6b6a59; font-size:14px; margin-bottom:15px;">How was your purchase? Leave a review to help other farmers in the marketplace.</p>
-                    <a href="add_review.php?order_id=<?= (int)$order['order_id'] ?>" class="btn btn-solid">? Write a Product Review</a>
+                    <a href="add_review.php?order_id=<?= (int)$order['order_id'] ?>" class="btn btn-solid">★ Write a Product Review</a>
                 </div>
             <?php endif; ?>
         </div>
@@ -358,7 +358,7 @@ $itemStmt->close();
 <footer class="site-footer">
 <div class="wrap">
     <div class="footer-bottom">
-        <span>? 2026 AgriMart. All rights reserved.</span>
+        <span>© 2026 AgriMart. All rights reserved.</span>
         <span>Digital Market Platform on Agricultural Products</span>
     </div>
 </div>

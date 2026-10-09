@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * AgriMart Automated Gmail & Email Notification Service (mailer.php)
  */
@@ -267,9 +267,9 @@ function sendOrderPlacedEmails($orderId, $conn) {
  */
 function sendBookingCreatedEmails($bookingId, $conn) {
     $sql = "
-        SELECT b.booking_id, b.start_date, b.end_date, b.pickup_location, b.dropoff_location, b.total_amount,
+        SELECT b.booking_id, b.start_date, b.end_date, b.pickup_location, b.dropoff_location, b.total_amount, b.security_deposit,
                e.equipment_name,
-               renter.full_name AS renter_name, renter.email AS renter_email, renter.phone AS renter_phone,
+               renter.user_id AS renter_id, renter.full_name AS renter_name, renter.email AS renter_email, renter.phone AS renter_phone,
                owner.full_name AS owner_name, owner.email AS owner_email, owner.phone AS owner_phone,
                p.payment_method, p.buyer_bank_name, p.buyer_account_name, p.buyer_account_number, p.transaction_ref
         FROM bookings b
@@ -287,6 +287,12 @@ function sendBookingCreatedEmails($bookingId, $conn) {
 
     if (!$b) return;
 
+    $secDeposit = (float)($b['security_deposit'] ?? 0);
+    if ($secDeposit <= 0) {
+        $secDeposit = round(((float)$b['total_amount'] / 1.20) * 0.20, 2);
+    }
+    $rentalSubtotal = (float)$b['total_amount'] - $secDeposit;
+
     // 1. Email to Equipment Owner
     $ownerBody = '
         <p>Hello <strong>' . htmlspecialchars($b['owner_name']) . '</strong>,</p>
@@ -295,7 +301,9 @@ function sendBookingCreatedEmails($bookingId, $conn) {
             <div><strong>Booking ID:</strong> #' . (int)$b['booking_id'] . '</div>
             <div><strong>Equipment:</strong> ' . htmlspecialchars($b['equipment_name']) . '</div>
             <div><strong>Rental Period:</strong> ' . htmlspecialchars($b['start_date']) . ' to ' . htmlspecialchars($b['end_date']) . '</div>
-            <div><strong>Total Rental Fee:</strong> ₱' . number_format((float)$b['total_amount'], 2) . '</div>
+            <div><strong>Rental Subtotal:</strong> ₱' . number_format($rentalSubtotal, 2) . '</div>
+            <div><strong>🛡️ 20% Security Deposit (Damage/Loss):</strong> ₱' . number_format($secDeposit, 2) . '</div>
+            <div style="margin-top:6px; font-size:16px; font-weight:bold; color:#122017;"><strong>Total Booking Fee:</strong> ₱' . number_format((float)$b['total_amount'], 2) . '</div>
             <div><strong>Renter Contact:</strong> ' . htmlspecialchars($b['renter_name']) . ' (' . htmlspecialchars($b['renter_phone'] ?: $b['renter_email']) . ')</div>
             <div><strong>Pickup Location:</strong> ' . htmlspecialchars($b['pickup_location']) . '</div>
         </div>
@@ -307,7 +315,7 @@ function sendBookingCreatedEmails($bookingId, $conn) {
         "New Rental Request #" . $b['booking_id'] . " for " . $b['equipment_name'] . " — AgriMart",
         "New Machinery Booking Request",
         $ownerBody,
-        "http://localhost/AgriMart/agrimart-frontend/assets/rental_requests.php",
+        getAgriMartBaseUrl() . 'rental_requests.php',
         "Review Rental Request"
     );
 
@@ -319,9 +327,12 @@ function sendBookingCreatedEmails($bookingId, $conn) {
             <div><strong>Booking ID:</strong> #' . (int)$b['booking_id'] . '</div>
             <div><strong>Equipment:</strong> ' . htmlspecialchars($b['equipment_name']) . '</div>
             <div><strong>Rental Dates:</strong> ' . htmlspecialchars($b['start_date']) . ' to ' . htmlspecialchars($b['end_date']) . '</div>
-            <div><strong>Total Fee:</strong> ₱' . number_format((float)$b['total_amount'], 2) . '</div>
+            <div><strong>Rental Subtotal:</strong> ₱' . number_format($rentalSubtotal, 2) . '</div>
+            <div><strong>🛡️ 20% Refundable Deposit (Damage/Loss):</strong> ₱' . number_format($secDeposit, 2) . '</div>
+            <div style="margin-top:6px; font-size:16px; font-weight:bold; color:#122017;"><strong>Total Fee Due:</strong> ₱' . number_format((float)$b['total_amount'], 2) . '</div>
             <div><strong>Owner Contact:</strong> ' . htmlspecialchars($b['owner_name']) . ' (' . htmlspecialchars($b['owner_phone'] ?: 'N/A') . ')</div>
         </div>
+        <p style="font-size:12px; color:#596054;">* The 20% security deposit will be refunded / released upon safe return of the machine in good condition.</p>
     ';
 
     sendAgriMartEmail(
@@ -392,7 +403,50 @@ function sendVerificationStatusEmail($userId, $status, $conn) {
         $subject,
         $headline,
         $body,
-        "http://localhost/AgriMart/agrimart-frontend/assets/profile.php",
+        getAgriMartBaseUrl() . "profile.php",
         "View Profile"
     );
 }
+
+/**
+ * Base URL helper for generating full absolute URLs in emails
+ */
+function getAgriMartBaseUrl() {
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || ($_SERVER['SERVER_PORT'] ?? 80) == 443) ? 'https://' : 'http://';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/AgriMart/agrimart-frontend/assets/index.php';
+    $dir = str_replace('\\', '/', dirname($script));
+    if ($dir === '/' || $dir === '.') $dir = '';
+    return rtrim($protocol . $host . $dir, '/') . '/';
+}
+
+/**
+ * Send Gmail notification with email verification activation link
+ */
+function sendVerificationEmail($toEmail, $toName, $token) {
+    $baseUrl = getAgriMartBaseUrl();
+    $verifyUrl = $baseUrl . "verify_email.php?token=" . urlencode($token);
+
+    $subject = "Verify Your Email Address — AgriMart";
+    $headline = "Welcome to AgriMart, " . $toName . "!";
+    $contentHtml = '
+        <p>Hello <strong>' . htmlspecialchars($toName) . '</strong>,</p>
+        <p>Thank you for creating an account on <strong>AgriMart</strong>. To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
+        <div style="background:#fdfbf7; border:1px solid #ded6b9; padding:16px; margin:20px 0; border-radius:4px;">
+            <p style="margin:0 0 8px; font-size:12.5px; color:#596054;">If the button below does not work, copy and paste this verification link into your web browser:</p>
+            <a href="' . htmlspecialchars($verifyUrl) . '" style="font-size:13px; color:#768047; word-break:break-all;">' . htmlspecialchars($verifyUrl) . '</a>
+        </div>
+        <p style="font-size:12px; color:#7d7967; margin-top:20px;">If you did not register for an AgriMart account, you can safely ignore this email.</p>
+    ';
+
+    return sendAgriMartEmail(
+        $toEmail,
+        $toName,
+        $subject,
+        $headline,
+        $contentHtml,
+        $verifyUrl,
+        "Verify Email Address"
+    );
+}
+

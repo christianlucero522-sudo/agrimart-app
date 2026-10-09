@@ -95,6 +95,7 @@ $equipment = $conn->query("
         <a href="admin_listings.php" class="active">Listings</a>
         <a href="admin_rentals.php">Rentals</a>
         <a href="admin_sales.php">Sales</a>
+        <a href="admin_moderation.php">Reports & Moderation</a>
         <a href="admin_reports.php">Reports</a>
     </nav>
     <div class="header-actions">
@@ -110,12 +111,12 @@ $equipment = $conn->query("
             <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Catalog Moderation</span>
             <h1>Manage Products & Equipment Listings</h1>
         </div>
-        <a href="admin_dashboard.php" class="btn btn-light">? Back to Dashboard</a>
+        <a href="admin_dashboard.php" class="btn btn-light">← Back to Dashboard</a>
     </div>
 
     <?php if (!empty($message)): ?>
         <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:15px; margin-bottom:20px; font-weight:500;">
-            ? <?= htmlspecialchars($message) ?>
+            ✓ <?= htmlspecialchars($message) ?>
         </div>
     <?php endif; ?>
 
@@ -143,7 +144,7 @@ $equipment = $conn->query("
                             <td><strong><?= htmlspecialchars($p['product_name']) ?></strong></td>
                             <td><?= htmlspecialchars($p['category_name']) ?></td>
                             <td><?= htmlspecialchars($p['seller_name']) ?></td>
-                            <td><strong>?<?= number_format((float)$p['price'], 2) ?></strong> / <?= htmlspecialchars($p['unit']) ?></td>
+                            <td><strong>₱<?= number_format((float)$p['price'], 2) ?></strong> / <?= htmlspecialchars($p['unit']) ?></td>
                             <td><?= (int)$p['quantity'] ?> left</td>
                             <td><span class="badge badge-<?= htmlspecialchars($p['status']) ?>"><?= htmlspecialchars(ucfirst($p['status'])) ?></span></td>
                             <td>
@@ -193,7 +194,7 @@ $equipment = $conn->query("
                             <td><strong><?= htmlspecialchars($e['equipment_name']) ?></strong> <?php if (!empty($e['brand'])): ?><small style="color:#777;">(<?= htmlspecialchars($e['brand']) ?>)</small><?php endif; ?></td>
                             <td><?= htmlspecialchars($e['category_name']) ?></td>
                             <td><?= htmlspecialchars($e['owner_name']) ?></td>
-                            <td><strong>?<?= number_format((float)$e['rate_price'], 2) ?></strong> / <?= htmlspecialchars($e['rate_type']) ?></td>
+                            <td><strong>₱<?= number_format((float)$e['rate_price'], 2) ?></strong> / <?= htmlspecialchars($e['rate_type']) ?></td>
                             <td><span class="badge badge-<?= htmlspecialchars($e['availability']) ?>"><?= htmlspecialchars(ucfirst($e['availability'])) ?></span></td>
                             <td><span class="badge badge-<?= htmlspecialchars($e['status']) ?>"><?= htmlspecialchars(ucfirst($e['status'])) ?></span></td>
                             <td>
@@ -223,7 +224,7 @@ $equipment = $conn->query("
 <footer class="site-footer">
 <div class="wrap">
     <div class="footer-bottom">
-        <span>? 2026 AgriMart Administration. All rights reserved.</span>
+        <span>© 2026 AgriMart Administration. All rights reserved.</span>
         <span>Digital Market Platform on Agricultural Products</span>
     </div>
 </div>

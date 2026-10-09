@@ -1,0 +1,15 @@
+﻿# AgriMart Apache Configuration & MIME Type Support
+AddType image/svg+xml .svg .svgz
+AddType text/css .css
+AddType application/javascript .js
+AddType image/png .png
+AddType image/jpeg .jpg .jpeg
+AddType image/webp .webp
+
+# Disable directory browsing
+Options -Indexes
+
+# Enable CORS for assets
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+</IfModule>

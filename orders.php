@@ -57,7 +57,7 @@ $stmt->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Orders ? AgriMart</title>
+    <title>My Orders — AgriMart</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         body { margin: 0; background: #f4f0df; color: #162018; }
@@ -66,12 +66,12 @@ $stmt->close();
         .page-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 35px; flex-wrap: wrap; gap: 20px; }
         .page-header h1 { font-family: Georgia, serif; font-size: clamp(32px, 4vw, 48px); margin: 0; color: #122017; }
         .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 25px; }
-        .filter-btn { padding: 8px 16px; border: 1px solid #d8d0b7; background: #fff; text-decoration: none; color: #162018; font-size: 13px; font-weight: 500; }
+        .filter-btn { padding: 8px 16px; border: 1px solid #d8d0b7; background: #fff; text-decoration: none; color: #162018; font-size: 13px; font-weight: 500; border-radius: 3px; }
         .filter-btn.active, .filter-btn:hover { background: var(--forest-900); color: #f5f0df; border-color: var(--forest-900); }
-        .order-card { background: #fff; border: 1px solid #ded6b9; padding: 24px; margin-bottom: 20px; display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; }
+        .order-card { background: #fff; border: 1px solid #ded6b9; padding: 24px; margin-bottom: 20px; display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; border-radius: 4px; }
         .order-meta { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; color: #6b6a59; }
         .order-meta strong { color: #122017; }
-        .badge { display: inline-block; padding: 5px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+        .badge { display: inline-block; padding: 5px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; border-radius: 3px; }
         .badge-pending { background: #efe2b7; color: #6e5817; }
         .badge-confirmed { background: #d0e3f5; color: #1b4975; }
         .badge-processing { background: #e2d9f3; color: #432b70; }
@@ -96,7 +96,7 @@ $stmt->close();
     </nav>
     <div class="header-actions">
         <span style="color:#fff; font-size:14px; margin-right:10px;">Hi, <strong><?= htmlspecialchars($firstName) ?></strong></span>
-        <a href="logout.php" class="btn btn-light">Logout</a>
+        <a href="logout.php" class="btn btn-light" style="background:#fff; color:#122017; font-weight:600; border:none; padding:8px 16px; border-radius:3px;">Logout</a>
     </div>
 </div>
 </header>
@@ -104,7 +104,7 @@ $stmt->close();
 <main class="page-wrap">
     <div class="page-header">
         <div>
-            <span class="eyebrow" style="color:#768047; font-family:monospace; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Marketplace Activity</span>
+            <span class="eyebrow" style="color:#768047; font-family:monospace; text-transform:uppercase; letter-spacing:2px; font-size:12px; font-weight:700;">Marketplace Activity</span>
             <h1>My Placed Orders</h1>
         </div>
         <a href="products.php" class="btn btn-solid">Continue Shopping</a>
@@ -120,7 +120,7 @@ $stmt->close();
     </div>
 
     <?php if (empty($orders)): ?>
-        <div style="background:#fff; border:1px solid #ded6b9; padding:50px; text-align:center;">
+        <div style="background:#fff; border:1px solid #ded6b9; padding:50px; text-align:center; border-radius:4px;">
             <h3 style="font-family:Georgia,serif; font-size:24px; margin-bottom:10px;">No orders found</h3>
             <p style="color:#6b6a59; margin-bottom:25px;">You haven't placed any orders matching this status.</p>
             <a href="products.php" class="btn btn-solid">Browse Products</a>
@@ -130,16 +130,15 @@ $stmt->close();
             <div class="order-card">
                 <div>
                     <div class="order-meta">
-                        <span>Order <strong>#<?= (int)$o['order_id'] ?></strong></span>
                         <span>Date: <strong><?= date('M d, Y h:i A', strtotime($o['created_at'])) ?></strong></span>
                         <span>Payment: <strong><?= htmlspecialchars(strtoupper($o['payment_method'] ?? 'N/A')) ?> (<?= htmlspecialchars(ucfirst($o['payment_status'] ?? 'pending')) ?>)</strong></span>
                         <span>Items: <strong><?= (int)$o['total_items'] ?> item(s)</strong></span>
                     </div>
                     <span class="badge badge-<?= htmlspecialchars($o['order_status']) ?>"><?= htmlspecialchars(ucfirst($o['order_status'])) ?></span>
-                    <div class="order-total">?<?= number_format((float)$o['total_amount'], 2) ?></div>
+                    <div class="order-total">₱<?= number_format((float)$o['total_amount'], 2) ?></div>
                 </div>
                 <div>
-                    <a href="order_details.php?id=<?= (int)$o['order_id'] ?>" class="btn btn-dark">View Details ?</a>
+                    <a href="order_details.php?id=<?= (int)$o['order_id'] ?>" class="btn btn-dark">View Details →</a>
                 </div>
             </div>
         <?php endforeach; ?>
@@ -149,7 +148,7 @@ $stmt->close();
 <footer class="site-footer">
 <div class="wrap">
     <div class="footer-bottom">
-        <span>? 2026 AgriMart. All rights reserved.</span>
+        <span>© 2026 AgriMart. All rights reserved.</span>
         <span>Digital Market Platform on Agricultural Products</span>
     </div>
 </div>

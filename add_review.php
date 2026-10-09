@@ -19,6 +19,7 @@ $equipmentId = isset($_GET['equipment_id']) ? (int)$_GET['equipment_id'] : 0;
 
 $targetTitle = 'Review & Rating';
 $targetType = 'general';
+$returnUrl = 'reviews.php?submitted=1';
 
 if ($orderId > 0) {
     // Get product from order
@@ -27,6 +28,7 @@ if ($orderId > 0) {
         $productId = (int)$oRow['product_id'];
         $targetTitle = "Review Product: " . $oRow['product_name'];
         $targetType = 'order';
+        $returnUrl = "order_details.php?id=$orderId&reviewed=1";
     }
 } elseif ($bookingId > 0) {
     $bRes = $conn->query("SELECT b.equipment_id, e.equipment_name FROM bookings b INNER JOIN equipment e ON b.equipment_id = e.equipment_id WHERE b.booking_id = $bookingId LIMIT 1");
@@ -34,6 +36,21 @@ if ($orderId > 0) {
         $equipmentId = (int)$bRow['equipment_id'];
         $targetTitle = "Review Equipment: " . $bRow['equipment_name'];
         $targetType = 'booking';
+        $returnUrl = "booking_details.php?id=$bookingId&reviewed=1";
+    }
+} elseif ($productId > 0) {
+    $pRes = $conn->query("SELECT product_name FROM products WHERE product_id = $productId LIMIT 1");
+    if ($pRow = $pRes->fetch_assoc()) {
+        $targetTitle = "Review Product: " . $pRow['product_name'];
+        $targetType = 'product';
+        $returnUrl = "product_details.php?id=$productId&reviewed=1";
+    }
+} elseif ($equipmentId > 0) {
+    $eRes = $conn->query("SELECT equipment_name FROM equipment WHERE equipment_id = $equipmentId LIMIT 1");
+    if ($eRow = $eRes->fetch_assoc()) {
+        $targetTitle = "Review Equipment: " . $eRow['equipment_name'];
+        $targetType = 'equipment';
+        $returnUrl = "equipment_details.php?id=$equipmentId&reviewed=1";
     }
 }
 
@@ -54,7 +71,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param('iiiiiis', $userId, $pId, $eId, $oId, $bId, $rating, $reviewText);
         if ($stmt->execute()) {
             $stmt->close();
-            header('Location: reviews.php?submitted=1');
+            if ($pId) {
+                header("Location: product_details.php?id=$pId&reviewed=1");
+            } elseif ($eId) {
+                header("Location: equipment_details.php?id=$eId&reviewed=1");
+            } elseif ($oId) {
+                header("Location: order_details.php?id=$oId&reviewed=1");
+            } elseif ($bId) {
+                header("Location: booking_details.php?id=$bId&reviewed=1");
+            } else {
+                header('Location: reviews.php?submitted=1');
+            }
             exit;
         } else {
             $error = 'Error saving review: ' . $conn->error;
@@ -67,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Write Review ? AgriMart</title>
+    <title>Write Review — AgriMart</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         body { margin: 0; background: #f4f0df; color: #162018; }
@@ -102,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </header>
 
 <main class="page-wrap">
-    <a href="reviews.php" style="display:inline-block; margin-bottom:20px; color:var(--forest-900); font-weight:600; text-decoration:none; font-size:14px;">? Back to Reviews</a>
+    <a href="reviews.php" style="display:inline-block; margin-bottom:20px; color:var(--forest-900); font-weight:600; text-decoration:none; font-size:14px;">← Back to Reviews</a>
 
     <div class="form-card">
         <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px; display:block; margin-bottom:5px;">Community Feedback</span>
@@ -126,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <?php for($i = 5; $i >= 1; $i--): ?>
                         <label class="star-label" style="display:flex; align-items:center; gap:5px; font-size:15px;">
                             <input type="radio" name="rating" value="<?= $i ?>" <?= $i === 5 ? 'checked' : '' ?>>
-                            <?= str_repeat('?', $i) ?> (<?= $i ?>)
+                            <?= str_repeat('★', $i) ?> (<?= $i ?>)
                         </label>
                     <?php endfor; ?>
                 </div>
@@ -145,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <footer class="site-footer">
 <div class="wrap">
     <div class="footer-bottom">
-        <span>? 2026 AgriMart. All rights reserved.</span>
+        <span>© 2026 AgriMart. All rights reserved.</span>
         <span>Digital Market Platform on Agricultural Products</span>
     </div>
 </div>

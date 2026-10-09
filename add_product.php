@@ -35,6 +35,19 @@ $parts = explode(
 
 $firstName = $parts[0] ?? 'User';
 
+// Check User Verification Status
+$uStmt = $conn->prepare("
+    SELECT is_verified, face_verified
+    FROM users
+    WHERE user_id = ?
+    LIMIT 1
+");
+$uStmt->bind_param('i', $userId);
+$uStmt->execute();
+$uRow = $uStmt->get_result()->fetch_assoc();
+$uStmt->close();
+
+$isVerified = ($uRow['is_verified'] ?? 'pending') === 'verified';
 
 /* =========================================================
    GET PRODUCT CATEGORIES
@@ -138,7 +151,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
        VALIDATION
     ===================================================== */
 
-    if ($productName === '') {
+    if (!$isVerified) {
+
+        $errorMessage =
+            'Account Verification Required: You must complete Government ID and Face Verification before listing products for sale.';
+
+    } elseif ($productName === '') {
 
         $errorMessage =
             'Product name is required.';
@@ -1091,6 +1109,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
 
+    <?php if (!$isVerified): ?>
+        <!-- VERIFICATION GATE -->
+        <div style="background:#fae6df; border:1px solid #efb7aa; color:#a54129; padding:24px; margin-bottom:25px; border-radius:4px;">
+            <div style="display:flex; align-items:flex-start; gap:14px;">
+                <svg viewBox="0 0 24 24" style="width:28px; height:28px; stroke:#a54129; fill:none; stroke-width:2; flex-shrink:0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <div>
+                    <strong style="font-size:16px; display:block; margin-bottom:4px;">Seller Identity Verification Required</strong>
+                    <p style="margin:0 0 12px; font-size:13px; line-height:1.5; color:#6b3527;">
+                        To protect farmers, buyers, and maintain marketplace trust, all sellers must complete Government ID and live Face Biometrics verification before publishing products for sale.
+                    </p>
+                    <a href="profile.php#verification" class="btn btn-solid" style="padding:8px 18px; font-size:12px; background:#a54129; border-color:#a54129; color:#fff; text-decoration:none; display:inline-block;">
+                        Complete Profile & Face Verification Now →
+                    </a>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
+
     <div class="form-card">
 
 
@@ -1099,6 +1135,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             action="add_product.php"
             enctype="multipart/form-data"
         >
+
+            <fieldset <?= !$isVerified ? 'disabled style="opacity:0.6;"' : '' ?> style="border:none; padding:0; margin:0;">
 
 
             <div class="form-grid">
@@ -1427,6 +1465,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             </div>
 
+
+            </fieldset>
 
         </form>
 

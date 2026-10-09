@@ -12,6 +12,9 @@ $fullName = $_SESSION['full_name'] ?? 'User';
 $parts = explode(' ', trim($fullName));
 $firstName = $parts[0] ?? 'User';
 
+// Automatically check and dispatch mobile SMS alerts for nearing rentals & overdue penalties
+@checkAndSendRentalExpiryAlerts($conn);
+
 $message = '';
 // Handle Owner Booking Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_booking_status') {
@@ -32,33 +35,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $renterId = (int)$booking['renter_id'];
             $equipId = (int)$booking['equipment_id'];
 
-            $upSql = "UPDATE bookings SET status = ? WHERE booking_id = ?";
-            $uStmt = $conn->prepare($upSql);
-            $uStmt->bind_param('si', $newStatus, $bookingId);
-            $uStmt->execute();
-            $uStmt->close();
-
-            // Update equipment availability
-            if ($newStatus === 'confirmed' || $newStatus === 'ongoing') {
-                $conn->query("UPDATE equipment SET availability = 'rented' WHERE equipment_id = $equipId");
-            } elseif ($newStatus === 'completed' || $newStatus === 'cancelled') {
-                $conn->query("UPDATE equipment SET availability = 'available' WHERE equipment_id = $equipId");
-            }
-
-            // If completed, update payment
             if ($newStatus === 'completed') {
-                $conn->query("UPDATE payments SET payment_status = 'paid', paid_at = NOW() WHERE booking_id = $bookingId AND payment_status = 'pending'");
+                // Use automated completion handler (calculates late penalty, sends SMS to renter, marks complete & releases equipment)
+                notifyRentalCompleted($conn, $bookingId);
+                $message = "Booking #$bookingId marked as Completed & Returned. Automatic SMS notification and completion alert sent to renter.";
+            } else {
+                $upSql = "UPDATE bookings SET status = ? WHERE booking_id = ?";
+                $uStmt = $conn->prepare($upSql);
+                $uStmt->bind_param('si', $newStatus, $bookingId);
+                $uStmt->execute();
+                $uStmt->close();
+
+                // Update equipment availability
+                if ($newStatus === 'confirmed' || $newStatus === 'ongoing') {
+                    $conn->query("UPDATE equipment SET availability = 'rented' WHERE equipment_id = $equipId");
+                } elseif ($newStatus === 'cancelled') {
+                    $conn->query("UPDATE equipment SET availability = 'available' WHERE equipment_id = $equipId");
+                    $conn->query("UPDATE payments SET payment_status = 'refunded' WHERE booking_id = $bookingId");
+                }
+
+                // Notify Renter
+                $title = "Rental Request #$bookingId " . ucfirst($newStatus);
+                $msg = "The equipment owner has updated your booking for " . $booking['equipment_name'] . " to '" . ucfirst($newStatus) . "'.";
+                $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'booking', ?)");
+                if ($nStmt) {
+                    $nStmt->bind_param('issi', $renterId, $title, $msg, $bookingId);
+                    $nStmt->execute();
+                    $nStmt->close();
+                }
+
+                $message = "Booking #$bookingId status updated to " . ucfirst($newStatus) . ".";
             }
-
-            // Notify Renter
-            $title = "Rental Request #$bookingId " . ucfirst($newStatus);
-            $msg = "The equipment owner has updated your booking for " . $booking['equipment_name'] . " to '" . ucfirst($newStatus) . "'.";
-            $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'booking', ?)");
-            $nStmt->bind_param('issi', $renterId, $title, $msg, $bookingId);
-            $nStmt->execute();
-            $nStmt->close();
-
-            $message = "Booking #$bookingId status updated to " . ucfirst($newStatus) . ".";
         }
     }
 }
@@ -71,7 +78,12 @@ $sql = "
         b.booking_date,
         b.start_date,
         b.end_date,
+        b.rental_hours,
+        b.actual_return_date,
         b.total_amount,
+        b.security_deposit,
+        b.late_days,
+        b.late_penalty,
         b.status,
         b.pickup_location,
         b.dropoff_location,
@@ -91,13 +103,17 @@ $sql = "
 ";
 
 if (!empty($statusFilter)) {
-    $sql .= " AND b.status = ?";
+    if ($statusFilter === 'overdue') {
+        $sql .= " AND b.status IN ('confirmed', 'ongoing') AND b.end_date < CURDATE()";
+    } else {
+        $sql .= " AND b.status = ?";
+    }
 }
 
 $sql .= " ORDER BY b.booking_id DESC";
 
 $stmt = $conn->prepare($sql);
-if (!empty($statusFilter)) {
+if (!empty($statusFilter) && $statusFilter !== 'overdue') {
     $stmt->bind_param('is', $userId, $statusFilter);
 } else {
     $stmt->bind_param('i', $userId);
@@ -116,7 +132,7 @@ $stmt->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rental Booking Requests ? AgriMart</title>
+    <title>Rental Booking Requests — AgriMart</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         body { margin: 0; background: #f4f0df; color: #162018; }
@@ -125,21 +141,23 @@ $stmt->close();
         .page-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 35px; flex-wrap: wrap; gap: 20px; }
         .page-header h1 { font-family: Georgia, serif; font-size: clamp(32px, 4vw, 48px); margin: 0; color: #122017; }
         .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 25px; }
-        .filter-btn { padding: 8px 16px; border: 1px solid #d8d0b7; background: #fff; text-decoration: none; color: #162018; font-size: 13px; font-weight: 500; }
+        .filter-btn { padding: 8px 16px; border: 1px solid #d8d0b7; background: #fff; text-decoration: none; color: #162018; font-size: 13px; font-weight: 500; border-radius: 3px; }
         .filter-btn.active, .filter-btn:hover { background: var(--forest-900); color: #f5f0df; border-color: var(--forest-900); }
-        .req-card { background: #fff; border: 1px solid #ded6b9; padding: 24px; margin-bottom: 20px; }
+        .req-card { background: #fff; border: 1px solid #ded6b9; padding: 24px; margin-bottom: 20px; border-radius: 4px; }
+        .req-card.overdue-card { border-left: 4px solid #b91c1c; background: #fffdfd; }
         .req-grid { display: grid; grid-template-columns: 1fr auto; gap: 25px; align-items: center; }
         .meta-row { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: #6b6a59; margin-bottom: 8px; }
         .meta-row strong { color: #122017; }
-        .badge { display: inline-block; padding: 5px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+        .badge { display: inline-block; padding: 5px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; border-radius: 3px; }
         .badge-pending { background: #efe2b7; color: #6e5817; }
         .badge-confirmed { background: #d0e3f5; color: #1b4975; }
         .badge-ongoing { background: #e2d9f3; color: #432b70; }
         .badge-completed { background: #e0edd5; color: #23581c; }
         .badge-cancelled { background: #f7dcd6; color: #7e2b1b; }
+        .badge-overdue { background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; }
         .req-total { font-size: 22px; font-weight: 700; color: var(--forest-900); margin-top: 6px; }
         .action-form { display: flex; gap: 8px; align-items: center; margin-top: 15px; }
-        .action-select { padding: 8px 12px; border: 1px solid #d8d0b7; background: #f5f0df; font-size: 13px; outline: none; }
+        .action-select { padding: 8px 12px; border: 1px solid #d8d0b7; background: #f5f0df; font-size: 13px; outline: none; border-radius: 3px; }
         @media(max-width:768px) { .req-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -158,7 +176,7 @@ $stmt->close();
     </nav>
     <div class="header-actions">
         <span style="color:#fff; font-size:14px; margin-right:10px;">Hi, <strong><?= htmlspecialchars($firstName) ?></strong></span>
-        <a href="logout.php" class="btn btn-light">Logout</a>
+        <a href="logout.php" class="btn btn-light" style="background:#fff; color:#122017; font-weight:600; border:none; padding:8px 16px; border-radius:3px;">Logout</a>
     </div>
 </div>
 </header>
@@ -166,7 +184,7 @@ $stmt->close();
 <main class="page-wrap">
     <div class="page-header">
         <div>
-            <span class="eyebrow" style="color:#768047; font-family:monospace; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Machinery Management</span>
+            <span class="eyebrow" style="color:#768047; font-family:monospace; text-transform:uppercase; letter-spacing:2px; font-size:12px; font-weight:700;">Machinery Management</span>
             <h1>Rental Booking Requests</h1>
         </div>
         <div>
@@ -176,8 +194,8 @@ $stmt->close();
     </div>
 
     <?php if (!empty($message)): ?>
-        <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:15px; margin-bottom:25px; font-weight:500;">
-            ? <?= htmlspecialchars($message) ?>
+        <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:15px; margin-bottom:25px; font-weight:500; border-radius:4px;">
+            ✓ <?= htmlspecialchars($message) ?>
         </div>
     <?php endif; ?>
 
@@ -186,19 +204,28 @@ $stmt->close();
         <a href="rental_requests.php?status=pending" class="filter-btn <?= $statusFilter === 'pending' ? 'active' : '' ?>">Pending</a>
         <a href="rental_requests.php?status=confirmed" class="filter-btn <?= $statusFilter === 'confirmed' ? 'active' : '' ?>">Confirmed</a>
         <a href="rental_requests.php?status=ongoing" class="filter-btn <?= $statusFilter === 'ongoing' ? 'active' : '' ?>">Ongoing</a>
+        <a href="rental_requests.php?status=overdue" class="filter-btn <?= $statusFilter === 'overdue' ? 'active' : '' ?>" style="color:#b91c1c;">⚠️ Overdue (5% Fee)</a>
         <a href="rental_requests.php?status=completed" class="filter-btn <?= $statusFilter === 'completed' ? 'active' : '' ?>">Completed</a>
         <a href="rental_requests.php?status=cancelled" class="filter-btn <?= $statusFilter === 'cancelled' ? 'active' : '' ?>">Cancelled</a>
     </div>
 
     <?php if (empty($requests)): ?>
-        <div style="background:#fff; border:1px solid #ded6b9; padding:50px; text-align:center;">
+        <div style="background:#fff; border:1px solid #ded6b9; padding:50px; text-align:center; border-radius:4px;">
             <h3 style="font-family:Georgia,serif; font-size:24px; margin-bottom:10px;">No rental requests found</h3>
             <p style="color:#6b6a59; margin-bottom:25px;">When users request to rent your machinery, their requests will appear here for approval.</p>
             <a href="my_equipment.php" class="btn btn-solid">Manage Equipment Listings</a>
         </div>
     <?php else: ?>
         <?php foreach ($requests as $r): ?>
-            <div class="req-card">
+            <?php
+            $todayTimestamp = strtotime(date('Y-m-d'));
+            $endTimestamp = strtotime($r['end_date']);
+            $isOverdue = in_array($r['status'], ['confirmed', 'ongoing']) && ($todayTimestamp > $endTimestamp);
+            $penaltyInfo = calculateRentalLatePenalty($r['total_amount'], $r['security_deposit'], $r['start_date'], $r['end_date'], $r['actual_return_date']);
+            $daysLate = $penaltyInfo['days_late'];
+            $totalPenalty = $penaltyInfo['total_penalty'];
+            ?>
+            <div class="req-card <?= $isOverdue ? 'overdue-card' : '' ?>">
                 <div class="req-grid">
                     <div>
                         <div style="font-family:Georgia,serif; font-size:20px; font-weight:700; color:#122017; margin-bottom:6px;">
@@ -208,17 +235,33 @@ $stmt->close();
                         <div class="meta-row">
                             <span>Booking <strong>#<?= (int)$r['booking_id'] ?></strong></span>
                             <span>Renter: <strong><?= htmlspecialchars($r['renter_name']) ?> (<?= htmlspecialchars($r['renter_phone'] ?: $r['renter_email']) ?>)</strong></span>
-                            <span>Duration: <strong><?= date('M d, Y', strtotime($r['start_date'])) ?> to <?= date('M d, Y', strtotime($r['end_date'])) ?></strong></span>
+                            <span>Duration: <strong><?= (!empty($r['rental_hours']) && (int)$r['rental_hours'] > 0) ? (date('M d, Y', strtotime($r['start_date'])) . ' (' . (int)$r['rental_hours'] . ' ' . ((int)$r['rental_hours'] === 1 ? 'Hour' : 'Hours') . ')') : (date('M d, Y', strtotime($r['start_date'])) . ' to ' . date('M d, Y', strtotime($r['end_date']))) ?></strong></span>
                             <span>Payment: <strong><?= htmlspecialchars(strtoupper($r['payment_method'] ?? 'CASH')) ?> (<?= htmlspecialchars(ucfirst($r['payment_status'] ?? 'pending')) ?>)</strong></span>
                         </div>
-                        <span class="badge badge-<?= htmlspecialchars($r['status']) ?>"><?= htmlspecialchars(ucfirst($r['status'])) ?></span>
-                        <div class="req-total">?<?= number_format((float)$r['total_amount'], 2) ?></div>
+                        
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:4px;">
+                            <span class="badge badge-<?= htmlspecialchars($r['status']) ?>"><?= htmlspecialchars(ucfirst($r['status'])) ?></span>
+                            <?php if ($isOverdue): ?>
+                                <span class="badge badge-overdue">🚨 OVERDUE (<?= $daysLate ?> Days Late • 5% Daily Fee)</span>
+                            <?php elseif ($r['status'] === 'completed' && (float)$r['late_penalty'] > 0): ?>
+                                <span class="badge badge-overdue">Returned Late (₱<?= number_format((float)$r['late_penalty'], 2) ?> Penalty Applied)</span>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="req-total">₱<?= number_format((float)$r['total_amount'], 2) ?></div>
+                        
+                        <?php if ($isOverdue): ?>
+                            <div style="background:#fef2f2; border:1px solid #fecaca; padding:8px 12px; margin-top:8px; border-radius:3px; font-size:13px; color:#991b1b;">
+                                ⚠️ <strong>5% Late Penalty:</strong> ₱<?= number_format($penaltyInfo['daily_penalty_amount'], 2) ?>/day &bull; <strong>Accumulated:</strong> ₱<?= number_format($totalPenalty, 2) ?> (Deducted from ₱<?= number_format($penaltyInfo['security_deposit'], 2) ?> security deposit).
+                            </div>
+                        <?php endif; ?>
+
                         <div style="font-size:13px; color:#596054; margin-top:8px;">
                             <strong>Pickup:</strong> <?= htmlspecialchars($r['pickup_location']) ?> | <strong>Dropoff:</strong> <?= htmlspecialchars($r['dropoff_location']) ?>
                         </div>
                     </div>
                     <div>
-                        <a href="booking_details.php?id=<?= (int)$r['booking_id'] ?>" class="btn btn-dark" style="margin-bottom:10px; display:inline-block;">View Booking ?</a>
+                        <a href="booking_details.php?id=<?= (int)$r['booking_id'] ?>" class="btn btn-dark" style="margin-bottom:10px; display:inline-block;">View Booking →</a>
                         
                         <?php if ($r['status'] !== 'completed' && $r['status'] !== 'cancelled'): ?>
                             <form action="rental_requests.php" method="POST" class="action-form">
@@ -243,7 +286,7 @@ $stmt->close();
 <footer class="site-footer">
 <div class="wrap">
     <div class="footer-bottom">
-        <span>? 2026 AgriMart. All rights reserved.</span>
+        <span>© 2026 AgriMart. All rights reserved.</span>
         <span>Digital Market Platform on Agricultural Products</span>
     </div>
 </div>

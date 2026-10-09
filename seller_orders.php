@@ -114,7 +114,9 @@ $stmt->close();
     <title>Customer Sales & Orders — AgriMart</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
-        .page-wrap { width: min(1200px, calc(100% - 40px)); margin: 40px auto 80px; }
+        body { margin: 0; background: #f4f0df; color: #162018; }
+        .site-header { background: var(--forest-950) !important; }
+        .page-wrap { width: min(1200px, 100% - 40px); margin: 0 auto; padding: 120px 0 90px; }
         .page-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; border-bottom: 1px solid #d8d0b7; padding-bottom: 20px; flex-wrap: wrap; gap: 15px; }
         .page-header h1 { font-family: Georgia, serif; font-size: 32px; margin: 5px 0 0; color: #122017; }
         .filter-bar { display: flex; gap: 10px; margin-bottom: 25px; flex-wrap: wrap; }
@@ -138,7 +140,7 @@ $stmt->close();
 </head>
 <body>
 
-<header class="site-header">
+<header class="site-header is-solid" id="siteHeader">
 <div class="wrap">
     <a href="index.php" class="logo">
         <span class="logo-text"><b>AgriMart</b><span>Field to Farm Gate</span></span>
