@@ -104,7 +104,7 @@ try {
     $itemSql = "INSERT INTO order_items (order_id, product_id, seller_id, quantity, price, subtotal) VALUES (?, ?, ?, ?, ?, ?)";
     $itemStmt = $conn->prepare($itemSql);
 
-    $stockSql = "UPDATE products SET quantity = quantity - ?, status = IF(quantity - ? <= 0, 'sold', 'active') WHERE product_id = ?";
+    $stockSql = "UPDATE products SET status = IF(CAST(quantity AS SIGNED) <= ?, 'sold', 'active'), quantity = IF(CAST(quantity AS SIGNED) <= ?, 0, quantity - ?) WHERE product_id = ?";
     $stockStmt = $conn->prepare($stockSql);
 
     $notifSql = "INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'order', ?)";
@@ -122,7 +122,7 @@ try {
         $itemStmt->bind_param('iiiidd', $orderId, $pId, $sId, $qty, $prc, $sub);
         $itemStmt->execute();
 
-        $stockStmt->bind_param('iii', $qty, $qty, $pId);
+        $stockStmt->bind_param('iiii', $qty, $qty, $qty, $pId);
         $stockStmt->execute();
 
         if (!in_array($sId, $sellersNotified) && $sId !== $userId) {

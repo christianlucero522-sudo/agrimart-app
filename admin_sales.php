@@ -66,7 +66,7 @@ $orders = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Sales & Transactions ? AgriMart Admin</title>
+    <title>Manage Sales & Transactions — AgriMart Admin</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         body { margin: 0; background: #f4f0df; color: #162018; }
@@ -103,6 +103,7 @@ $orders = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
         <a href="admin_listings.php">Listings</a>
         <a href="admin_rentals.php">Rentals</a>
         <a href="admin_sales.php" class="active">Sales</a>
+        <a href="admin_moderation.php">Reports & Moderation</a>
         <a href="admin_reports.php">Reports</a>
     </nav>
     <div class="header-actions">
@@ -118,12 +119,12 @@ $orders = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
             <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Financial Supervision</span>
             <h1>Manage Product Orders & Transactions</h1>
         </div>
-        <a href="admin_dashboard.php" class="btn btn-light">? Back to Dashboard</a>
+        <a href="admin_dashboard.php" class="btn btn-light">← Back to Dashboard</a>
     </div>
 
     <?php if (!empty($message)): ?>
         <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:15px; margin-bottom:20px; font-weight:500;">
-            ? <?= htmlspecialchars($message) ?>
+            ✓ <?= htmlspecialchars($message) ?>
         </div>
     <?php endif; ?>
 
@@ -161,7 +162,7 @@ $orders = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
                             <td><?= htmlspecialchars($o['buyer_name']) ?><br><small style="color:#777;"><?= htmlspecialchars($o['buyer_phone'] ?: 'No phone') ?></small></td>
                             <td><?= date('M d, Y h:i A', strtotime($o['created_at'])) ?></td>
                             <td><strong><?= (int)$o['total_items'] ?></strong> item(s)</td>
-                            <td><strong style="color:var(--forest-900);">?<?= number_format((float)$o['total_amount'], 2) ?></strong></td>
+                            <td><strong style="color:var(--forest-900);">₱<?= number_format((float)$o['total_amount'], 2) ?></strong></td>
                             <td>
                                 <strong><?= htmlspecialchars(strtoupper($o['payment_method'] ?? 'CASH')) ?></strong>
                                 <?php if (!empty($o['transaction_ref'])): ?>
@@ -208,7 +209,7 @@ $orders = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
 <footer class="site-footer">
 <div class="wrap">
     <div class="footer-bottom">
-        <span>? 2026 AgriMart Administration. All rights reserved.</span>
+        <span>© 2026 AgriMart Administration. All rights reserved.</span>
         <span>Digital Market Platform on Agricultural Products</span>
     </div>
 </div>

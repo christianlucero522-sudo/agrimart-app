@@ -62,21 +62,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // 3. User ID Verification Approval / Rejection
+    // 3. User ID & Face Verification Approval / Rejection
     elseif ($action === 'set_verification') {
         $targetId = (int)($_POST['user_id'] ?? 0);
         $newVer = trim($_POST['verification_status'] ?? 'verified');
+        $faceVer = trim($_POST['face_verification_status'] ?? $newVer);
         if ($targetId > 0 && in_array($newVer, ['pending', 'verified', 'rejected'])) {
-            $stmt = $conn->prepare("UPDATE users SET is_verified = ? WHERE user_id = ?");
-            $stmt->bind_param('si', $newVer, $targetId);
+            $stmt = $conn->prepare("UPDATE users SET is_verified = ?, face_verified = ? WHERE user_id = ?");
+            $stmt->bind_param('ssi', $newVer, $faceVer, $targetId);
             $stmt->execute();
             $stmt->close();
 
             // Notify user
-            $vTitle = "Identity Verification: " . ucfirst($newVer);
+            $vTitle = "Identity & Face Verification: " . ucfirst($newVer);
             $vMsg = ($newVer === 'verified') 
-                ? "Your identity and valid ID have been approved! You are now a verified member of AgriMart."
-                : "Your identity verification was marked as '$newVer'. Please check your profile or contact admin.";
+                ? "Your identity, valid ID, and face biometric photo have been approved! You are now a verified member of AgriMart."
+                : "Your identity verification status was updated to '$newVer'. Please check your profile.";
             $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'system', ?)");
             $nStmt->bind_param('issi', $targetId, $vTitle, $vMsg, $targetId);
             $nStmt->execute();
@@ -86,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             require_once 'mailer.php';
             @sendVerificationStatusEmail($targetId, $newVer, $conn);
 
-            $message = "User verification status updated to " . ucfirst($newVer) . ".";
+            $message = "User ID & Face verification status updated to " . ucfirst($newVer) . ".";
         }
     }
 }
@@ -155,6 +156,7 @@ $stmt->close();
         <a href="admin_listings.php">Listings</a>
         <a href="admin_rentals.php">Rentals</a>
         <a href="admin_sales.php">Sales</a>
+        <a href="admin_moderation.php">Reports & Moderation</a>
         <a href="admin_reports.php">Reports</a>
     </nav>
     <div class="header-actions">
@@ -217,9 +219,9 @@ $stmt->close();
                     <th>User ID</th>
                     <th>User / Contact</th>
                     <th>Role</th>
-                    <th>Valid ID Details</th>
-                    <th>ID Document</th>
-                    <th>Verification</th>
+                    <th>Valid ID Document</th>
+                    <th>Face Biometrics</th>
+                    <th>ID & Face Verification</th>
                     <th>Account Status</th>
                     <th>Actions</th>
                 </tr>
@@ -233,7 +235,15 @@ $stmt->close();
                             <td><strong>#<?= (int)$u['user_id'] ?></strong></td>
                             <td>
                                 <strong><?= htmlspecialchars($u['full_name']) ?></strong><br>
-                                <small style="color:#666;"><?= htmlspecialchars($u['email']) ?> | <?= htmlspecialchars($u['phone'] ?: 'No phone') ?></small>
+                                <small style="color:#666;"><?= htmlspecialchars($u['email']) ?></small><br>
+                                <small style="color:#666;"><?= htmlspecialchars($u['phone'] ?: 'No phone') ?></small>
+                                <div style="margin-top:4px;">
+                                    <?php if ((int)($u['email_verified'] ?? 1) === 1): ?>
+                                        <span style="background:#e0edd5; color:#23581c; font-size:10px; padding:1px 5px; border-radius:2px; font-weight:700;">Email Verified</span>
+                                    <?php else: ?>
+                                        <span style="background:#fae6df; color:#a54129; font-size:10px; padding:1px 5px; border-radius:2px; font-weight:700;">Email Unverified</span>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                             <td>
                                 <span class="badge badge-<?= $u['role'] === 'admin' ? 'active' : 'inactive' ?>"><?= htmlspecialchars(ucfirst($u['role'])) ?></span>
@@ -241,29 +251,48 @@ $stmt->close();
                             <td>
                                 <?php if (!empty($u['id_type'])): ?>
                                     <strong><?= htmlspecialchars($u['id_type']) ?></strong><br>
-                                    <small style="color:#777;">No: <?= htmlspecialchars($u['id_number'] ?? 'N/A') ?></small>
-                                <?php else: ?>
-                                    <span style="color:#888; font-size:12px;">No ID Provided</span>
+                                    <small style="color:#777;">No: <?= htmlspecialchars($u['id_number'] ?? 'N/A') ?></small><br>
                                 <?php endif; ?>
-                            </td>
-                            <td>
                                 <?php if (!empty($u['id_card_image'])): ?>
-                                    <a href="<?= htmlspecialchars($u['id_card_image']) ?>" target="_blank" class="btn btn-light" style="padding:3px 8px; font-size:11px;">
+                                    <a href="<?= htmlspecialchars($u['id_card_image']) ?>" target="_blank" class="btn btn-light" style="padding:2px 8px; font-size:11px; margin-top:4px; display:inline-block;">
                                         🔍 View ID Card
                                     </a>
                                 <?php else: ?>
-                                    <span style="color:#999; font-size:12px;">No upload</span>
+                                    <span style="color:#999; font-size:11px;">No ID upload</span>
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <form action="admin_users.php" method="POST" style="display:inline;">
+                                <?php if (!empty($u['face_image'])): ?>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <img src="<?= htmlspecialchars($u['face_image']) ?>" alt="Face Selfie" style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:1px solid #768047;">
+                                        <a href="<?= htmlspecialchars($u['face_image']) ?>" target="_blank" class="btn btn-light" style="padding:2px 8px; font-size:11px;">
+                                            🔍 View Face
+                                        </a>
+                                    </div>
+                                <?php else: ?>
+                                    <span style="color:#999; font-size:11px;">No face capture</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <form action="admin_users.php" method="POST" style="display:flex; flex-direction:column; gap:4px;">
                                     <input type="hidden" name="action" value="set_verification">
                                     <input type="hidden" name="user_id" value="<?= (int)$u['user_id'] ?>">
-                                    <select name="verification_status" onchange="this.form.submit()" style="padding:3px 6px; font-size:12px;">
-                                        <option value="pending" <?= ($u['is_verified'] ?? '') === 'pending' ? 'selected' : '' ?>>⏳ Pending</option>
-                                        <option value="verified" <?= ($u['is_verified'] ?? '') === 'verified' ? 'selected' : '' ?>>✓ Verified</option>
-                                        <option value="rejected" <?= ($u['is_verified'] ?? '') === 'rejected' ? 'selected' : '' ?>>✕ Rejected</option>
-                                    </select>
+                                    
+                                    <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+                                        <span style="font-size:11px; color:#555;">ID Status:</span>
+                                        <select name="verification_status" onchange="this.form.submit()" style="padding:2px 4px; font-size:11px;">
+                                            <option value="pending" <?= ($u['is_verified'] ?? '') === 'pending' ? 'selected' : '' ?>>⏳ Pending</option>
+                                            <option value="verified" <?= ($u['is_verified'] ?? '') === 'verified' ? 'selected' : '' ?>>✓ Verified</option>
+                                            <option value="rejected" <?= ($u['is_verified'] ?? '') === 'rejected' ? 'selected' : '' ?>>✕ Rejected</option>
+                                        </select>
+                                    </div>
+
+                                    <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+                                        <span style="font-size:11px; color:#555;">Face:</span>
+                                        <span style="font-size:11px; font-weight:700; color:<?= ($u['face_verified'] ?? '') === 'verified' ? '#23581c' : (($u['face_verified'] ?? '') === 'rejected' ? '#a54129' : '#6e5817') ?>;">
+                                            <?= ucfirst($u['face_verified'] ?? 'pending') ?>
+                                        </span>
+                                    </div>
                                 </form>
                             </td>
                             <td>

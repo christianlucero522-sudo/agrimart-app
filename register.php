@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 session_start();
 
 $error = $_SESSION['register_error'] ?? '';
@@ -63,7 +63,7 @@ if (isset($_SESSION['user_id'])) {
             <div class="alert alert-success"><?= htmlspecialchars($success) ?></div>
         <?php endif; ?>
 
-        <form id="registerForm" action="register_process.php" method="POST" enctype="multipart/form-data">
+        <form id="registerForm" action="register_process.php" method="POST">
             <!-- FULL NAME -->
             <div class="field">
                 <label for="full_name">Full Name</label>
@@ -78,7 +78,7 @@ if (isset($_SESSION['user_id'])) {
                 </div>
                 <div class="field">
                     <label for="phone">Mobile Number</label>
-                    <input type="text" id="phone" name="phone" required placeholder="09171234567">
+                    <input type="text" id="phone" name="phone" placeholder="09171234567">
                 </div>
             </div>
 
@@ -94,50 +94,16 @@ if (isset($_SESSION['user_id'])) {
                 </div>
             </div>
 
-            <!-- IDENTITY / VALID ID VERIFICATION -->
-            <div style="background:#fff; border:1px solid #d4c79c; padding:18px 20px; margin:20px 0 24px;">
-                <span style="font-family:monospace; font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:#768047; font-weight:700; display:block; margin-bottom:6px;">
-                    Identity & Farmer Verification
-                </span>
-                <p style="font-size:13px; color:#686454; margin:0 0 16px; line-height:1.4;">
-                    To protect our marketplace from fraudulent accounts, please provide a valid government ID or RSBSA farmer registration.
-                </p>
-
-                <div class="field-row">
-                    <div class="field" style="margin-bottom:14px;">
-                        <label for="id_type">Valid ID Type</label>
-                        <select id="id_type" name="id_type" required>
-                            <option value="">Select ID Type...</option>
-                            <option value="Philippine National ID">Philippine National ID (PhilSys)</option>
-                            <option value="Farmer RSBSA ID">Farmer RSBSA Registry ID</option>
-                            <option value="Driver's License">Driver's License</option>
-                            <option value="UMID / SSS">UMID / SSS Card</option>
-                            <option value="PhilHealth ID">PhilHealth ID</option>
-                            <option value="Voter's ID">Voter's ID / Certificate</option>
-                            <option value="Postal ID">Postal ID</option>
-                            <option value="Barangay Certificate">Barangay Certificate / Clearance</option>
-                        </select>
-                    </div>
-
-                    <div class="field" style="margin-bottom:14px;">
-                        <label for="id_number">ID Number</label>
-                        <input type="text" id="id_number" name="id_number" required placeholder="1234-5678-9012">
-                    </div>
-                </div>
-
-                <div class="field" style="margin-bottom:0;">
-                    <label for="id_card_image">Upload Photo of Valid ID</label>
-                    <input type="file" id="id_card_image" name="id_card_image" accept="image/*" required style="padding:10px;">
-                    <span class="field-hint">Upload a clear photo (JPG, PNG, WebP) of your ID.</span>
-                </div>
+            <!-- SHOW PASSWORD CHECKBOX -->
+            <div class="custom-checkbox-wrap" style="margin-top:-6px; margin-bottom:20px;">
+                <input type="checkbox" id="showPasswordToggle" onchange="togglePasswords(this.checked)">
+                <label for="showPasswordToggle">Show password</label>
             </div>
 
             <!-- TERMS & CONDITIONS -->
-            <div class="field" style="display:flex; align-items:center; gap:10px; margin-top:10px;">
-                <input type="checkbox" id="terms" name="terms" value="1" required style="width:auto; cursor:pointer;">
-                <label for="terms" style="margin-bottom:0; font-family:inherit; font-size:13px; letter-spacing:0; text-transform:none; color:#5e604e; cursor:pointer;">
-                    I agree to AgriMart Terms and Conditions
-                </label>
+            <div class="custom-checkbox-wrap" style="margin-bottom:24px;">
+                <input type="checkbox" id="terms" name="terms" value="1" required>
+                <label for="terms">I agree to AgriMart Terms and Conditions</label>
             </div>
 
             <button type="submit" class="btn btn-solid btn-block">
@@ -151,6 +117,24 @@ if (isset($_SESSION['user_id'])) {
     </section>
 </main>
 
+<script>
+function togglePasswords(show) {
+    const p1 = document.getElementById('password');
+    const p2 = document.getElementById('confirm_password');
+    if (p1) p1.type = show ? 'text' : 'password';
+    if (p2) p2.type = show ? 'text' : 'password';
+}
+
+document.getElementById('registerForm').addEventListener('submit', function(e) {
+    const pass = document.getElementById('password').value;
+    const confirm = document.getElementById('confirm_password').value;
+    if (pass !== confirm) {
+        e.preventDefault();
+        alert('Passwords do not match. Please verify and try again.');
+        document.getElementById('confirm_password').focus();
+    }
+});
+</script>
 <script src="js/main.js"></script>
 </body>
 </html>

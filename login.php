@@ -1,8 +1,11 @@
-﻿<?php
+<?php
 session_start();
 
 $error = $_SESSION['login_error'] ?? '';
-unset($_SESSION['login_error']);
+$success = $_SESSION['login_success'] ?? '';
+unset($_SESSION['login_error'], $_SESSION['login_success']);
+
+$prefillEmail = trim($_GET['email'] ?? '');
 
 if (isset($_SESSION['user_id'])) {
     if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') {
@@ -59,18 +62,31 @@ if (isset($_SESSION['user_id'])) {
         </p>
 
         <?php if ($error !== ''): ?>
-            <div class="alert alert-error"><?= htmlspecialchars($error) ?></div>
+            <div class="alert alert-error"><?= $error ?></div>
+        <?php endif; ?>
+
+        <?php if ($success !== ''): ?>
+            <div class="alert alert-success"><?= $success ?></div>
         <?php endif; ?>
 
         <form id="loginForm" action="login_process.php" method="POST">
             <div class="field">
                 <label for="email">Email Address</label>
-                <input type="email" id="email" name="email" required autofocus placeholder="yourname@domain.com">
+                <input type="email" id="email" name="email" required autofocus value="<?= htmlspecialchars($prefillEmail) ?>" placeholder="yourname@domain.com">
             </div>
 
             <div class="field">
-                <label for="password">Password</label>
+                <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                    <label for="password">Password</label>
+                    <a href="resend_verification.php<?= $prefillEmail !== '' ? '?email=' . urlencode($prefillEmail) : '' ?>" style="font-size:11px; color:#768047; text-decoration:none; font-family:monospace; text-transform:uppercase; letter-spacing:0.5px;">Resend Verification?</a>
+                </div>
                 <input type="password" id="password" name="password" required placeholder="Enter password">
+            </div>
+
+            <!-- SHOW PASSWORD CHECKBOX -->
+            <div class="custom-checkbox-wrap" style="margin-top:-8px; margin-bottom:24px;">
+                <input type="checkbox" id="showPasswordToggle" onchange="document.getElementById('password').type = this.checked ? 'text' : 'password';">
+                <label for="showPasswordToggle">Show password</label>
             </div>
 
             <button type="submit" class="btn btn-solid btn-block">

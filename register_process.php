@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'config.php';
+require_once 'mailer.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header("Location: register.php");
@@ -12,21 +13,19 @@ $email = trim($_POST['email'] ?? '');
 $phone = trim($_POST['phone'] ?? '');
 $password = $_POST['password'] ?? '';
 $confirmPassword = $_POST['confirm_password'] ?? '';
-$idType = trim($_POST['id_type'] ?? '');
-$idNumber = trim($_POST['id_number'] ?? '');
 $terms = isset($_POST['terms']);
 
-// Enforce role = 'user' for public registration (Admin accounts created by Admins only)
+// Enforce role = 'user' for public registration
 $role = 'user';
 
 if (!$terms) {
-    $_SESSION['register_error'] = 'You must agree to the Terms and Conditions.';
+    $_SESSION['register_error'] = 'You must agree to the AgriMart Terms and Conditions to proceed.';
     header("Location: register.php");
     exit;
 }
 
-if ($fullName === '' || $email === '' || $password === '' || $confirmPassword === '' || $idType === '' || $idNumber === '') {
-    $_SESSION['register_error'] = 'Please fill in all required fields including Valid ID details.';
+if ($fullName === '' || $email === '' || $password === '' || $confirmPassword === '') {
+    $_SESSION['register_error'] = 'Please fill in all required fields.';
     header("Location: register.php");
     exit;
 }
@@ -44,7 +43,7 @@ if (strlen($password) < 8) {
 }
 
 if ($password !== $confirmPassword) {
-    $_SESSION['register_error'] = 'Passwords do not match.';
+    $_SESSION['register_error'] = 'Passwords do not match. Please verify and try again.';
     header("Location: register.php");
     exit;
 }
@@ -57,62 +56,42 @@ $result = $stmt->get_result();
 
 if ($result && $result->num_rows > 0) {
     $stmt->close();
-    $_SESSION['register_error'] = 'That email address is already registered.';
+    $_SESSION['register_error'] = 'That email address is already registered. Please log in or use a different email.';
     header("Location: register.php");
     exit;
 }
 $stmt->close();
 
-// Handle ID Image Upload
-$idImagePath = null;
-if (isset($_FILES['id_card_image']) && $_FILES['id_card_image']['error'] === UPLOAD_ERR_OK) {
-    $tmpName = $_FILES['id_card_image']['tmp_name'];
-    $origName = basename($_FILES['id_card_image']['name']);
-    $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
-    $allowed = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
-
-    if (in_array($ext, $allowed)) {
-        $filename = 'id_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
-        $destPath = __DIR__ . '/uploads/identifications/' . $filename;
-        if (move_uploaded_file($tmpName, $destPath)) {
-            $idImagePath = 'uploads/identifications/' . $filename;
-        }
-    }
-}
-
-if (!$idImagePath) {
-    $_SESSION['register_error'] = 'Please upload a clear photo or copy of your valid ID / Farmer Card.';
-    header("Location: register.php");
-    exit;
-}
-
 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 $status = 'active';
 $isVerified = 'pending';
+$faceVerified = 'pending';
+$emailVerified = 0;
+$emailVerificationToken = bin2hex(random_bytes(24));
 
-$insertSql = "INSERT INTO users (full_name, email, phone, password, role, id_type, id_number, id_card_image, is_verified, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+$insertSql = "INSERT INTO users (full_name, email, phone, password, role, is_verified, face_verified, status, email_verified, email_verification_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 $stmt = $conn->prepare($insertSql);
-$stmt->bind_param('ssssssssss', $fullName, $email, $phone, $hashedPassword, $role, $idType, $idNumber, $idImagePath, $isVerified, $status);
+$stmt->bind_param('ssssssssis', $fullName, $email, $phone, $hashedPassword, $role, $isVerified, $faceVerified, $status, $emailVerified, $emailVerificationToken);
 
 if ($stmt->execute()) {
     $newUserId = $stmt->insert_id;
     $stmt->close();
 
-    // Notify Admin of new verification request
-    $notifTitle = "New User Verification: " . $fullName;
-    $notifMsg = "$fullName has registered with a $idType (No: $idNumber). Please review their valid ID in the Admin Console.";
+    // Send email verification link
+    @sendVerificationEmail($email, $fullName, $emailVerificationToken);
+
+    // Notify Admin of new registration
+    $notifTitle = "New User Registered: " . $fullName;
+    $notifMsg = "$fullName ($email) has created an account on AgriMart.";
     $adminNotif = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) SELECT user_id, ?, ?, 'system', ? FROM users WHERE role = 'admin'");
-    $adminNotif->bind_param('ssi', $notifTitle, $notifMsg, $newUserId);
-    $adminNotif->execute();
-    $adminNotif->close();
+    if ($adminNotif) {
+        $adminNotif->bind_param('ssi', $notifTitle, $notifMsg, $newUserId);
+        $adminNotif->execute();
+        $adminNotif->close();
+    }
 
-    // Auto-login newly registered user
-    $_SESSION['user_id'] = $newUserId;
-    $_SESSION['full_name'] = $fullName;
-    $_SESSION['email'] = $email;
-    $_SESSION['role'] = $role;
-
-    header("Location: dashboard.php");
+    $_SESSION['login_success'] = "Account created successfully! We sent a verification link to <strong>" . htmlspecialchars($email) . "</strong>. Please check your inbox and click the verification link to activate your account.";
+    header("Location: login.php?email=" . urlencode($email));
     exit;
 } else {
     $_SESSION['register_error'] = 'Registration failed: ' . $conn->error;

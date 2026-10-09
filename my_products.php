@@ -40,6 +40,19 @@ $parts = explode(' ', trim($fullName));
 
 $firstName = $parts[0] ?? 'User';
 
+// Check User Verification Status
+$uStmt = $conn->prepare("
+    SELECT is_verified, face_verified
+    FROM users
+    WHERE user_id = ?
+    LIMIT 1
+");
+$uStmt->bind_param('i', $userId);
+$uStmt->execute();
+$uRow = $uStmt->get_result()->fetch_assoc();
+$uStmt->close();
+
+$isVerified = ($uRow['is_verified'] ?? 'pending') === 'verified';
 
 /* =========================================================
    GET USER PRODUCTS
@@ -63,6 +76,8 @@ $sql = "
         ON p.category_id = c.category_id
 
     WHERE p.user_id = ?
+      AND p.status != 'deleted'
+      AND p.status != 'archived'
 
     ORDER BY p.product_id DESC
 ";
@@ -869,7 +884,23 @@ function getMyProductImage($imageUrl)
 
     </div>
 
-
+    <?php if (!$isVerified): ?>
+        <!-- VERIFICATION GATE -->
+        <div style="background:#fae6df; border:1px solid #efb7aa; color:#a54129; padding:20px 24px; margin-bottom:25px; border-radius:4px;">
+            <div style="display:flex; align-items:flex-start; gap:14px;">
+                <svg viewBox="0 0 24 24" style="width:26px; height:26px; stroke:#a54129; fill:none; stroke-width:2; flex-shrink:0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <div>
+                    <strong style="font-size:15px; display:block; margin-bottom:4px;">Seller Identity Verification Required</strong>
+                    <p style="margin:0 0 10px; font-size:13px; line-height:1.5; color:#6b3527;">
+                        To publish and activate seed or crop listings, you must complete Government ID and live Face Biometrics verification.
+                    </p>
+                    <a href="profile.php#verification" class="btn btn-solid" style="padding:6px 16px; font-size:12px; background:#a54129; border-color:#a54129; color:#fff; text-decoration:none; display:inline-block;">
+                        Complete Profile & Face Verification Now →
+                    </a>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
 
     <!-- =====================================================
          ACTIVATED MESSAGE
@@ -916,6 +947,28 @@ function getMyProductImage($imageUrl)
 
 
     <!-- =====================================================
+         DELETED MESSAGE
+    ====================================================== -->
+
+    <?php if (
+        isset($_GET['deleted']) &&
+        $_GET['deleted'] === '1'
+    ): ?>
+
+        <div
+            class="
+                listing-message
+                listing-message-success
+            "
+        >
+            Product listing removed from your store successfully.
+        </div>
+
+    <?php endif; ?>
+
+
+
+    <!-- =====================================================
          ERROR MESSAGE
     ====================================================== -->
 
@@ -929,7 +982,11 @@ function getMyProductImage($imageUrl)
                 listing-message-error
             "
         >
-            Unable to update the product listing.
+            <?php if ($_GET['error'] === 'verification_required'): ?>
+                Account Verification Required: You must complete Government ID and Face Biometrics verification before activating products for sale.
+            <?php else: ?>
+                Unable to update the product listing.
+            <?php endif; ?>
         </div>
 
     <?php endif; ?>
@@ -1092,17 +1149,19 @@ function getMyProductImage($imageUrl)
                                 </span>
 
 
-                                <strong>
-
-                                    <?= (int) $product['quantity'] ?>
-
-                                    <?= htmlspecialchars(
-                                        $product['unit'] ?? '',
-                                        ENT_QUOTES,
-                                        'UTF-8'
-                                    ) ?>
-
-                                </strong>
+                                <?php if ((int)$product['quantity'] <= 0): ?>
+                                    <strong style="color:#a54129; font-weight:700;">
+                                        0 <?= htmlspecialchars($product['unit'] ?? '', ENT_QUOTES, 'UTF-8') ?> (Out of Stock)
+                                    </strong>
+                                <?php elseif ((int)$product['quantity'] <= 5): ?>
+                                    <strong style="color:#b26b00; font-weight:700;">
+                                        <?= (int) $product['quantity'] ?> <?= htmlspecialchars($product['unit'] ?? '', ENT_QUOTES, 'UTF-8') ?> (Low Stock)
+                                    </strong>
+                                <?php else: ?>
+                                    <strong>
+                                        <?= (int) $product['quantity'] ?> <?= htmlspecialchars($product['unit'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                    </strong>
+                                <?php endif; ?>
 
                             </div>
 
@@ -1143,9 +1202,7 @@ function getMyProductImage($imageUrl)
 
 
 
-                            <!-- =================================================
-                                 ACTIVATE / DEACTIVATE
-                            ================================================== -->
+                            <!-- ACTIVATE / DEACTIVATE -->
 
                             <form
                                 action="toggle_product_status.php"
@@ -1188,13 +1245,48 @@ function getMyProductImage($imageUrl)
                                         === 'active'
                                     ): ?>
 
-                                        Deactivate Listing
+                                        Deactivate
 
                                     <?php else: ?>
 
-                                        Activate Listing
+                                        Activate
 
                                     <?php endif; ?>
+
+                                </button>
+
+
+                            </form>
+
+
+                            <!-- REMOVE / DELETE LISTING -->
+
+                            <form
+                                action="delete_product.php"
+                                method="POST"
+                                class="status-form"
+
+                                onsubmit="
+                                    return confirm(
+                                        'Are you sure you want to permanently remove <?= addslashes(htmlspecialchars($product['product_name'])) ?> from your product listings?'
+                                    );
+                                "
+                            >
+
+                                <input
+                                    type="hidden"
+                                    name="product_id"
+                                    value="<?= (int) $product['product_id'] ?>"
+                                >
+
+
+                                <button
+                                    type="submit"
+                                    class="listing-action remove-listing-button"
+                                    style="background:#fae6df; color:#a54129; border:1px solid #efb7aa; font-weight:700; cursor:pointer;"
+                                >
+
+                                    <?= (int)$product['quantity'] <= 0 ? '✕ Remove (Out of Stock)' : '✕ Remove' ?>
 
                                 </button>
 

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 session_start();
 require_once 'config.php';
 
@@ -18,8 +18,11 @@ $parts = explode(' ', trim($fullName));
 $firstName = $parts[0] ?? 'User';
 $initial = strtoupper(substr($firstName, 0, 1));
 
+// Automatically check and dispatch mobile SMS alerts for nearing rentals
+@checkAndSendRentalExpiryAlerts($conn);
+
 // Fetch User Verification & Profile Info
-$uStmt = $conn->prepare("SELECT email, phone, role, is_verified, id_type, created_at FROM users WHERE user_id = ? LIMIT 1");
+$uStmt = $conn->prepare("SELECT email, phone, role, is_verified, id_type, email_verified, face_verified, face_image, created_at FROM users WHERE user_id = ? LIMIT 1");
 $uStmt->bind_param('i', $userId);
 $uStmt->execute();
 $userInfo = $uStmt->get_result()->fetch_assoc();
@@ -27,6 +30,9 @@ $uStmt->close();
 
 $email = $userInfo['email'] ?? '';
 $isVerified = $userInfo['is_verified'] ?? 'pending';
+$emailVerified = (int)($userInfo['email_verified'] ?? 1);
+$faceVerified = $userInfo['face_verified'] ?? 'pending';
+$faceImage = $userInfo['face_image'] ?? '';
 
 // Real-time Metrics
 $cartCount = (int)($conn->query("SELECT COALESCE(SUM(quantity), 0) AS c FROM cart_items ci INNER JOIN cart c ON ci.cart_id = c.cart_id WHERE c.user_id = $userId")->fetch_assoc()['c'] ?? 0);
@@ -312,19 +318,83 @@ $unreadNotifs = (int)($conn->query("SELECT COUNT(*) AS c FROM notifications WHER
                 <p>Manage your harvest sales, equipment bookings, orders, and customer inquiries from your command center.</p>
             </div>
             <div>
-                <?php if ($isVerified === 'verified'): ?>
+                <?php if ($isVerified === 'verified' && $faceVerified === 'verified'): ?>
                     <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:10px 16px; font-weight:700; font-size:13px; border-radius:4px; display:inline-flex; align-items:center; gap:6px;">
                         Verified AgriMart Member
                     </div>
-                <?php elseif ($isVerified === 'pending'): ?>
+                <?php elseif ($isVerified === 'pending' || $faceVerified === 'pending'): ?>
                     <div style="background:#efe2b7; border:1px solid #d4c79c; color:#6e5817; padding:10px 16px; font-weight:600; font-size:13px; border-radius:4px; display:inline-flex; align-items:center; gap:6px;">
-                        Valid ID Under Review
+                        KYC & Face In Review
                     </div>
                 <?php else: ?>
                     <div style="background:#fae6df; border:1px solid #efb7aa; color:#a54129; padding:10px 16px; font-weight:600; font-size:13px; border-radius:4px; display:inline-flex; align-items:center; gap:6px;">
                         Verification Required
                     </div>
                 <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Identity & Face Verification Monitoring Panel -->
+        <div style="background:#fff; border:1px solid #ded6b9; padding:20px 24px; margin-bottom:28px; border-radius:4px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:15px; border-bottom:1px solid #f0ead6; padding-bottom:10px;">
+                <div>
+                    <span style="font-family:monospace; color:#768047; font-size:11px; text-transform:uppercase; letter-spacing:1px; font-weight:700;">Trust & KYC Status</span>
+                    <h3 style="font-family:Georgia,serif; font-size:18px; margin:2px 0 0; color:#122017;">Account Verification & Face Biometrics</h3>
+                </div>
+                <div>
+                    <a href="profile.php#verification" class="btn btn-solid" style="padding:6px 14px; font-size:12px;">
+                        Manage Verification & Face Photo →
+                    </a>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:15px;">
+                <!-- 1. Email Verification -->
+                <div style="background:#fbf9f2; border:1px solid #ded6b9; padding:12px 15px; border-radius:4px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span style="font-size:12px; font-weight:700; color:#1f2e1a;">Email Activation</span>
+                        <?php if ($emailVerified === 1): ?>
+                            <span style="background:#e0edd5; color:#23581c; border:1px solid #c5ddb4; font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px;">Verified</span>
+                        <?php else: ?>
+                            <span style="background:#efe2b7; color:#6e5817; border:1px solid #d4c79c; font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px;">Pending</span>
+                        <?php endif; ?>
+                    </div>
+                    <div style="font-size:11px; color:#686454;">Activated login credentials</div>
+                </div>
+
+                <!-- 2. Valid ID Verification -->
+                <div style="background:#fbf9f2; border:1px solid #ded6b9; padding:12px 15px; border-radius:4px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span style="font-size:12px; font-weight:700; color:#1f2e1a;">Government ID</span>
+                        <?php if ($isVerified === 'verified'): ?>
+                            <span style="background:#e0edd5; color:#23581c; border:1px solid #c5ddb4; font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px;">Approved</span>
+                        <?php elseif ($isVerified === 'pending'): ?>
+                            <span style="background:#efe2b7; color:#6e5817; border:1px solid #d4c79c; font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px;">In Review</span>
+                        <?php elseif ($isVerified === 'rejected'): ?>
+                            <span style="background:#fae6df; color:#a54129; border:1px solid #efb7aa; font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px;">Rejected</span>
+                        <?php else: ?>
+                            <span style="background:#eee; color:#666; font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px;">Missing</span>
+                        <?php endif; ?>
+                    </div>
+                    <div style="font-size:11px; color:#686454;">Official Gov / Farmer Card</div>
+                </div>
+
+                <!-- 3. Face Biometrics -->
+                <div style="background:#fbf9f2; border:1px solid #ded6b9; padding:12px 15px; border-radius:4px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span style="font-size:12px; font-weight:700; color:#1f2e1a;">Face Verification</span>
+                        <?php if ($faceVerified === 'verified'): ?>
+                            <span style="background:#e0edd5; color:#23581c; border:1px solid #c5ddb4; font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px;">Verified</span>
+                        <?php elseif ($faceVerified === 'pending'): ?>
+                            <span style="background:#efe2b7; color:#6e5817; border:1px solid #d4c79c; font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px;">In Review</span>
+                        <?php elseif ($faceVerified === 'rejected'): ?>
+                            <span style="background:#fae6df; color:#a54129; border:1px solid #efb7aa; font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px;">Rejected</span>
+                        <?php else: ?>
+                            <span style="background:#eee; color:#666; font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px;">Not Captured</span>
+                        <?php endif; ?>
+                    </div>
+                    <div style="font-size:11px; color:#686454;">Live selfie match check</div>
+                </div>
             </div>
         </div>
 

@@ -923,94 +923,105 @@ function getProductImage($imageUrl)
                         </p>
 
 
-                        <p class="card-meta">
+                        <?php 
+                        $stockQty = (int)$product['quantity'];
+                        $unitName = htmlspecialchars($product['unit'] ?? 'item', ENT_QUOTES, 'UTF-8');
+                        ?>
 
-                            <?= (int) $product['quantity'] ?>
-
-                            <?= htmlspecialchars(
-                                $product['unit']
-                                    ?? 'item',
-                                ENT_QUOTES,
-                                'UTF-8'
-                            ) ?>
-
-                            available
-
-                        </p>
-
-
+                        <!-- STOCK LESSENING INDICATOR -->
+                        <div style="margin-bottom:12px;">
+                            <?php if ($stockQty > 10): ?>
+                                <span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; color:#23581c; background:#e0edd5; padding:3px 9px; border-radius:3px; font-weight:600;">
+                                    ✅ <?= $stockQty ?> <?= $unitName ?> in stock
+                                </span>
+                            <?php elseif ($stockQty > 0): ?>
+                                <span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; color:#854d0e; background:#fef7e6; border:1px solid #f2dfa8; padding:3px 9px; border-radius:3px; font-weight:700;">
+                                    🔥 Only <?= $stockQty ?> <?= $unitName ?> left!
+                                </span>
+                            <?php else: ?>
+                                <span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; color:#a54129; background:#fae6df; border:1px solid #efb7aa; padding:3px 9px; border-radius:3px; font-weight:700;">
+                                    ⛔ Out of Stock
+                                </span>
+                            <?php endif; ?>
+                        </div>
 
                         <div class="card-foot">
 
-
                             <span class="price">
-
-                                ₱<?= number_format(
-                                    (float) $product['price'],
-                                    2
-                                ) ?>
-
-
-                                <?php if (
-                                    !empty($product['unit'])
-                                ): ?>
-
-                                    <small>
-
-                                        /
-                                        <?= htmlspecialchars(
-                                            $product['unit'],
-                                            ENT_QUOTES,
-                                            'UTF-8'
-                                        ) ?>
-
-                                    </small>
-
+                                ₱<?= number_format((float) $product['price'], 2) ?>
+                                <?php if (!empty($product['unit'])): ?>
+                                    <small>/ <?= htmlspecialchars($product['unit'], ENT_QUOTES, 'UTF-8') ?></small>
                                 <?php endif; ?>
-
-
                             </span>
 
-
-                            <a
-                                href="product_details.php?id=<?= (int) $product['product_id'] ?>"
-                                class="btn btn-dark"
-                            >
-                                View
-                            </a>
-
+                            <?php if ($stockQty > 0): ?>
+                                <a
+                                    href="product_details.php?id=<?= (int) $product['product_id'] ?>"
+                                    class="btn btn-dark"
+                                >
+                                    View Details
+                                </a>
+                            <?php else: ?>
+                                <button
+                                    type="button"
+                                    class="btn btn-dark"
+                                    onclick="showOutOfStockPopup('<?= htmlspecialchars(addslashes($product['product_name']), ENT_QUOTES, 'UTF-8') ?>')"
+                                    style="background:#8c8874; border-color:#8c8874; cursor:pointer;"
+                                >
+                                    Out of Stock
+                                </button>
+                            <?php endif; ?>
 
                         </div>
 
-
                     </div>
-
 
                 </div>
 
-
             <?php endwhile; ?>
 
-
         </div>
-
 
     <?php else: ?>
 
-
         <div class="empty-state">
-
             No products found.
-
         </div>
 
-
     <?php endif; ?>
-
 
 </div>
 
 </section>
+
+<!-- =====================================================
+     OUT OF STOCK POPUP MODAL
+====================================================== -->
+<div id="outOfStockModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.65); z-index:9999; justify-content:center; align-items:center; padding:20px; box-sizing:border-box;">
+    <div style="background:#f5f0df; width:min(480px, 100%); padding:35px; border:1px solid #ded6b9; position:relative; box-shadow:0 15px 35px rgba(0,0,0,0.25); text-align:center; border-radius:4px;">
+        <div style="width:60px; height:60px; border-radius:50%; background:#fae6df; color:#a54129; display:flex; align-items:center; justify-content:center; font-size:28px; margin:0 auto 18px;">⚠️</div>
+        <h2 style="font-family:Georgia,serif; font-size:26px; color:#122017; margin:0 0 10px;">Out of Stock</h2>
+        <p id="outOfStockMsg" style="color:#596054; line-height:1.6; font-size:15px; margin-bottom:25px;">
+            We're sorry, this harvest crop is currently sold out and out of stock. Please check back later or explore other fresh listings from local farmers.
+        </p>
+        <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+            <button type="button" class="btn btn-light" onclick="closeOutOfStockPopup()" style="padding:12px 24px; cursor:pointer;">Close</button>
+            <a href="products.php" class="btn btn-solid" style="padding:12px 24px; text-decoration:none;">Browse Other Products</a>
+        </div>
+    </div>
+</div>
+
+<script>
+function showOutOfStockPopup(prodName) {
+    if (prodName) {
+        document.getElementById('outOfStockMsg').innerHTML = "We're sorry, <strong>" + prodName + "</strong> is currently sold out and out of stock. Please check back soon or explore other fresh harvest crops.";
+    }
+    document.getElementById('outOfStockModal').style.display = 'flex';
+}
+function closeOutOfStockPopup() {
+    document.getElementById('outOfStockModal').style.display = 'none';
+}
+</script>
 
 
 

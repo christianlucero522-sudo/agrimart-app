@@ -20,6 +20,7 @@ $totalEquipment = (int)($conn->query("SELECT COUNT(*) AS c FROM equipment WHERE 
 $totalOrders = (int)($conn->query("SELECT COUNT(*) AS c FROM orders")->fetch_assoc()['c'] ?? 0);
 $totalSalesRevenue = (float)($conn->query("SELECT SUM(amount) AS s FROM payments WHERE payment_status = 'paid'")->fetch_assoc()['s'] ?? 0);
 $activeRentals = (int)($conn->query("SELECT COUNT(*) AS c FROM bookings WHERE status IN ('confirmed', 'ongoing')")->fetch_assoc()['c'] ?? 0);
+$pendingReports = (int)($conn->query("SELECT COUNT(*) AS c FROM reports WHERE status = 'pending'")->fetch_assoc()['c'] ?? 0);
 
 // Recent Orders
 $recentOrders = $conn->query("
@@ -43,8 +44,9 @@ $recentRentals = $conn->query("
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard ? AgriMart</title>
+    <title>Admin Dashboard — AgriMart</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/admin.css">
     <style>
         body { margin: 0; background: #f4f0df; color: #162018; }
         .site-header { background: var(--forest-950) !important; }
@@ -76,7 +78,7 @@ $recentRentals = $conn->query("
 </head>
 <body>
 
-<header class="site-header">
+<header class="site-header admin-header-nav">
 <div class="wrap">
     <a href="admin_dashboard.php" class="logo">
         <span class="logo-text"><b>AgriMart Admin</b><span>System Management Console</span></span>
@@ -88,6 +90,12 @@ $recentRentals = $conn->query("
         <a href="admin_listings.php">Listings</a>
         <a href="admin_rentals.php">Rentals</a>
         <a href="admin_sales.php">Sales</a>
+        <a href="admin_moderation.php">
+            Reports & Moderation
+            <?php if ($pendingReports > 0): ?>
+                <span style="background:#ef4444; color:#fff; font-size:11px; padding:2px 6px; border-radius:10px; margin-left:4px;"><?= $pendingReports ?></span>
+            <?php endif; ?>
+        </a>
         <a href="admin_reports.php">Reports</a>
     </nav>
     <div class="header-actions">
@@ -103,9 +111,12 @@ $recentRentals = $conn->query("
             <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px;">System Administration</span>
             <h1>Administrator Control Center</h1>
         </div>
-        <div>
-            <a href="admin_reports.php" class="btn btn-solid" style="margin-right:8px;">?? Generate Reports</a>
-            <a href="index.php" class="btn btn-light">View Public Site</a>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <a href="admin_moderation.php" class="btn" style="background: <?= $pendingReports > 0 ? '#b91c1c' : '#122017' ?>; color:#ffffff !important; border-color: <?= $pendingReports > 0 ? '#b91c1c' : '#122017' ?>; text-decoration:none;">
+                🚩 <?= $pendingReports > 0 ? "$pendingReports Pending Reports" : "Reports & Moderation" ?>
+            </a>
+            <a href="admin_reports.php" class="btn btn-solid" style="text-decoration:none;">📊 Generate Reports</a>
+            <a href="index.php" class="btn" style="background:#ffffff; color:#122017 !important; border:1px solid #d8d0b7; text-decoration:none;">View Public Site</a>
         </div>
     </div>
 
@@ -115,6 +126,11 @@ $recentRentals = $conn->query("
             <span class="label">Total Users</span>
             <div class="val"><?= number_format($totalUsers) ?></div>
             <span style="color:#6b6a59; font-size:12px;">Registered Buyers & Sellers</span>
+        </div>
+        <div class="stat-card" style="<?= $pendingReports > 0 ? 'border: 2px solid #ef4444; background:#fffcf7;' : '' ?>">
+            <span class="label" style="color: <?= $pendingReports > 0 ? '#b91c1c' : '#768047' ?>;">Pending User Reports</span>
+            <div class="val" style="color: <?= $pendingReports > 0 ? '#b91c1c' : '#122017' ?>;"><?= number_format($pendingReports) ?></div>
+            <span style="color:#6b6a59; font-size:12px;"><?= $pendingReports > 0 ? 'Requires Investigation' : 'No pending flags' ?></span>
         </div>
         <div class="stat-card">
             <span class="label">Active Seed Products</span>
@@ -133,7 +149,7 @@ $recentRentals = $conn->query("
         </div>
         <div class="stat-card">
             <span class="label">Paid Platform Revenue</span>
-            <div class="val">?<?= number_format($totalSalesRevenue, 2) ?></div>
+            <div class="val">₱<?= number_format($totalSalesRevenue, 2) ?></div>
             <span style="color:#6b6a59; font-size:12px;">Processed Payments</span>
         </div>
     </div>
@@ -141,12 +157,25 @@ $recentRentals = $conn->query("
     <!-- Admin Modules Navigation -->
     <h2 style="font-family:Georgia,serif; font-size:26px; margin:0 0 20px; color:#122017;">Management Modules</h2>
     <div class="nav-grid">
+        <a href="admin_moderation.php" class="admin-nav-card" style="<?= $pendingReports > 0 ? 'background: #541111; border-color: #881e1e;' : '' ?>">
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h3>Reports & Moderation</h3>
+                    <?php if ($pendingReports > 0): ?>
+                        <span style="background:#ef4444; color:#fff; font-size:12px; font-weight:700; padding:3px 8px; border-radius:12px;"><?= $pendingReports ?> NEW</span>
+                    <?php endif; ?>
+                </div>
+                <p>Investigate reported products, fake items, scams, and suspend non-compliant seller accounts.</p>
+            </div>
+            <span class="arrow">Review Reports & Moderation →</span>
+        </a>
+
         <a href="admin_users.php" class="admin-nav-card">
             <div>
                 <h3>Manage Users</h3>
                 <p>View all accounts, block/unblock, activate, or update user permissions.</p>
             </div>
-            <span class="arrow">Manage Accounts ?</span>
+            <span class="arrow">Manage Accounts →</span>
         </a>
 
         <a href="admin_sellers.php" class="admin-nav-card">
@@ -154,7 +183,7 @@ $recentRentals = $conn->query("
                 <h3>Manage Sellers</h3>
                 <p>Inspect farmer and equipment owner profiles, listings, and reputation.</p>
             </div>
-            <span class="arrow">View Sellers ?</span>
+            <span class="arrow">View Sellers →</span>
         </a>
 
         <a href="admin_listings.php" class="admin-nav-card">
@@ -162,7 +191,7 @@ $recentRentals = $conn->query("
                 <h3>Manage Listings</h3>
                 <p>Moderate seeds, agricultural produce, and machinery catalog listings.</p>
             </div>
-            <span class="arrow">Moderate Listings ?</span>
+            <span class="arrow">Moderate Listings →</span>
         </a>
 
         <a href="admin_rentals.php" class="admin-nav-card">
@@ -170,7 +199,7 @@ $recentRentals = $conn->query("
                 <h3>Manage Rentals</h3>
                 <p>Monitor machinery rental bookings, schedules, and approval statuses.</p>
             </div>
-            <span class="arrow">Monitor Rentals ?</span>
+            <span class="arrow">Monitor Rentals →</span>
         </a>
 
         <a href="admin_sales.php" class="admin-nav-card">
@@ -178,7 +207,7 @@ $recentRentals = $conn->query("
                 <h3>Manage Sales & Orders</h3>
                 <p>Track all marketplace customer orders, fulfillments, and payment receipts.</p>
             </div>
-            <span class="arrow">Manage Sales ?</span>
+            <span class="arrow">Manage Sales →</span>
         </a>
 
         <a href="admin_categories.php" class="admin-nav-card">
@@ -186,7 +215,7 @@ $recentRentals = $conn->query("
                 <h3>Manage Categories</h3>
                 <p>Create, update, and organize categories for seeds and farm equipment.</p>
             </div>
-            <span class="arrow">Organize Categories ?</span>
+            <span class="arrow">Organize Categories →</span>
         </a>
 
         <a href="admin_reports.php" class="admin-nav-card">
@@ -194,7 +223,7 @@ $recentRentals = $conn->query("
                 <h3>Generate Reports</h3>
                 <p>Generate printable Sales, User Activity, Rental, and Inventory reports.</p>
             </div>
-            <span class="arrow">Generate Reports ?</span>
+            <span class="arrow">Generate Reports →</span>
         </a>
     </div>
 
@@ -219,7 +248,7 @@ $recentRentals = $conn->query("
                             <tr>
                                 <td><strong>#<?= (int)$ro['order_id'] ?></strong></td>
                                 <td><?= htmlspecialchars($ro['buyer_name']) ?></td>
-                                <td>?<?= number_format((float)$ro['total_amount'], 2) ?></td>
+                                <td>₱<?= number_format((float)$ro['total_amount'], 2) ?></td>
                                 <td><span class="badge badge-<?= htmlspecialchars($ro['order_status']) ?>"><?= htmlspecialchars(ucfirst($ro['order_status'])) ?></span></td>
                             </tr>
                         <?php endforeach; ?>
@@ -261,7 +290,7 @@ $recentRentals = $conn->query("
 <footer class="site-footer">
 <div class="wrap">
     <div class="footer-bottom">
-        <span>? 2026 AgriMart Administration. All rights reserved.</span>
+        <span>© 2026 AgriMart Administration. All rights reserved.</span>
         <span>Digital Market Platform on Agricultural Products</span>
     </div>
 </div>

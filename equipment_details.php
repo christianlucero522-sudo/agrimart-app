@@ -44,13 +44,29 @@ if ($equipmentId <= 0) {
 }
 
 
+// Fetch Renter Address for Nearest Location Indicator
+$userCity = '';
+$userProvince = '';
+if ($isLoggedIn) {
+    $uAddrStmt = $conn->prepare("SELECT city_municipality, province FROM addresses WHERE user_id = ? LIMIT 1");
+    if ($uAddrStmt) {
+        $uAddrStmt->bind_param('i', $userId);
+        $uAddrStmt->execute();
+        $uAddrRow = $uAddrStmt->get_result()->fetch_assoc();
+        if ($uAddrRow) {
+            $userCity = trim($uAddrRow['city_municipality'] ?? '');
+            $userProvince = trim($uAddrRow['province'] ?? '');
+        }
+        $uAddrStmt->close();
+    }
+}
+
 /* =========================================================
    GET EQUIPMENT
 ========================================================= */
 
 $sql = "
     SELECT
-
         e.equipment_id,
         e.user_id AS owner_id,
         e.equipment_name,
@@ -62,29 +78,23 @@ $sql = "
         e.availability,
         e.image_url,
         e.status,
-
+        COALESCE(NULLIF(e.location_city, ''), a.city_municipality, 'San Fernando') AS location_city,
+        COALESCE(NULLIF(e.location_province, ''), a.province, 'Pampanga') AS location_province,
+        a.barangay AS owner_barangay,
         c.category_id,
         c.category_name,
-
         u.full_name AS owner_name,
         u.phone AS owner_phone
-
     FROM equipment e
-
-    INNER JOIN categories c
-        ON e.category_id = c.category_id
-
-    INNER JOIN users u
-        ON e.user_id = u.user_id
-
+    INNER JOIN categories c ON e.category_id = c.category_id
+    INNER JOIN users u ON e.user_id = u.user_id
+    LEFT JOIN addresses a ON u.user_id = a.user_id
     WHERE e.equipment_id = ?
       AND e.status = 'active'
       AND c.category_type = 'equipment'
       AND u.status = 'active'
-
     LIMIT 1
 ";
-
 
 $stmt = $conn->prepare($sql);
 
@@ -92,28 +102,47 @@ if (!$stmt) {
     die('Unable to load equipment.');
 }
 
-
 $stmt->bind_param(
     'i',
     $equipmentId
 );
 
 $stmt->execute();
-
 $result = $stmt->get_result();
-
 $equipment = $result->fetch_assoc();
 
-
 if (!$equipment) {
-
     $stmt->close();
     $conn->close();
-
     header('Location: equipment.php');
     exit;
 }
 
+$isNearestCity = !empty($userCity) && (stripos($equipment['location_city'], $userCity) !== false || stripos($userCity, $equipment['location_city']) !== false);
+$isNearbyProv = !empty($userProvince) && (stripos($equipment['location_province'], $userProvince) !== false);
+
+// Fetch Reviews for this equipment
+$reviewsSql = "
+    SELECT r.review_id, r.rating, r.review_text, r.created_at, u.full_name AS reviewer_name
+    FROM reviews r
+    INNER JOIN users u ON r.reviewer_id = u.user_id
+    WHERE r.equipment_id = ?
+    ORDER BY r.review_id DESC
+";
+$rStmt = $conn->prepare($reviewsSql);
+$rStmt->bind_param('i', $equipmentId);
+$rStmt->execute();
+$reviewsResult = $rStmt->get_result();
+$equipmentReviews = [];
+$totalScore = 0;
+while ($row = $reviewsResult->fetch_assoc()) {
+    $equipmentReviews[] = $row;
+    $totalScore += (int)$row['rating'];
+}
+$rStmt->close();
+
+$reviewCount = count($equipmentReviews);
+$avgRating = $reviewCount > 0 ? round($totalScore / $reviewCount, 1) : 0;
 
 /* =========================================================
    IMAGE HELPER
@@ -643,7 +672,6 @@ $isOwner =
                 grid-template-columns: 1fr;
             }
 
-
             .equipment-detail-image,
             .equipment-detail-image img {
                 min-height: 400px;
@@ -986,21 +1014,40 @@ $isOwner =
 
         <div class="equipment-detail-info">
 
+            <!-- REVIEWED ALERT -->
+            <?php if (isset($_GET['reviewed']) && $_GET['reviewed'] === '1'): ?>
+                <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:14px 18px; margin-bottom:20px; border-radius:2px; font-weight:500;">
+                    ✓ Thank you! Your review and equipment rating have been posted.
+                </div>
+            <?php endif; ?>
 
             <span class="eyebrow">
                 Equipment Rental
             </span>
 
-
             <h1>
-
                 <?= htmlspecialchars(
                     $equipment['equipment_name'],
                     ENT_QUOTES,
                     'UTF-8'
                 ) ?>
-
             </h1>
+
+            <!-- RATING SUMMARY -->
+            <div style="display:flex; align-items:center; gap:8px; margin:-8px 0 16px; flex-wrap:wrap;">
+                <?php if ($reviewCount > 0): ?>
+                    <span style="color:#d4b65a; font-size:18px; letter-spacing:1px;">
+                        <?= str_repeat('★', (int)round($avgRating)) . str_repeat('☆', 5 - (int)round($avgRating)) ?>
+                    </span>
+                    <strong style="color:#122017; font-size:15px;"><?= number_format($avgRating, 1) ?></strong>
+                    <a href="#equipmentReviews" style="color:#768047; font-size:13.5px; text-decoration:underline;">(<?= $reviewCount ?> <?= $reviewCount === 1 ? 'review' : 'reviews' ?>)</a>
+                <?php else: ?>
+                    <span style="color:#b5b3a2; font-size:16px;">★★★★★</span>
+                    <span style="color:#6b6959; font-size:13px;">No reviews yet</span>
+                    <a href="add_review.php?equipment_id=<?= (int)$equipment['equipment_id'] ?>" style="color:#768047; font-size:13px; text-decoration:underline; margin-left:4px;">Be the first to review</a>
+                <?php endif; ?>
+            </div>
+
 
 
 
@@ -1216,13 +1263,10 @@ $isOwner =
 
 
                 <div class="meta-row">
-
                     <span>
                         Availability
                     </span>
-
                     <strong>
-
                         <?= htmlspecialchars(
                             ucfirst(
                                 $equipment['availability']
@@ -1230,13 +1274,36 @@ $isOwner =
                             ENT_QUOTES,
                             'UTF-8'
                         ) ?>
-
                     </strong>
-
                 </div>
 
+                <!-- LOCATION METADATA ROW -->
+                <div class="meta-row">
+                    <span>
+                        📍 Location
+                    </span>
+                    <strong>
+                        <?= htmlspecialchars($equipment['location_city'], ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars($equipment['location_province'], ENT_QUOTES, 'UTF-8') ?>
+                        <?php if ($isNearestCity): ?>
+                            <span style="background:#d7ecc7; color:#1b4f15; font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:6px; display:inline-flex; align-items:center;">
+                                🎯 Nearest in your City
+                            </span>
+                        <?php elseif ($isNearbyProv): ?>
+                            <span style="background:#eef4ea; color:#3b6e31; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; margin-left:6px;">
+                                📍 In your Province
+                            </span>
+                        <?php endif; ?>
+                    </strong>
+                </div>
 
             </div>
+
+            <!-- NEAREST LOCATION PROXIMITY CARD -->
+            <?php if ($isNearestCity): ?>
+                <div style="background:#e8eedf; border:1px solid #cbd8bd; padding:14px 18px; margin-bottom:20px; border-radius:3px; font-size:13.5px; color:#122017; line-height:1.5;">
+                    🎯 <strong>Nearest Available Equipment:</strong> This machinery is located directly in <strong><?= htmlspecialchars($equipment['location_city']) ?></strong>. Booking local equipment saves transport time and hauling costs.
+                </div>
+            <?php endif; ?>
 
 
 
@@ -1367,20 +1434,39 @@ $isOwner =
                                 <input type="hidden" id="ratePrice" value="<?= (float)$equipment['rate_price'] ?>">
                                 <input type="hidden" id="rateType" value="<?= htmlspecialchars($equipment['rate_type']) ?>">
 
-                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px;">
-                                    <div>
-                                        <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:5px; color:#596054;">Start Date</label>
-                                        <input type="date" name="start_date" id="startDate" required min="<?= date('Y-m-d') ?>" style="width:100%; padding:10px; border:1px solid #d8d0b7; background:#fff;" onchange="calculateRentalTotal()">
+                                <?php $isHourly = in_array(strtolower($equipment['rate_type']), ['hourly', 'hour']); ?>
+
+                                <?php if ($isHourly): ?>
+                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px;">
+                                        <div>
+                                            <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:5px; color:#596054;">Rental Date</label>
+                                            <input type="date" name="start_date" id="startDate" required min="<?= date('Y-m-d') ?>" value="<?= date('Y-m-d') ?>" style="width:100%; padding:10px; border:1px solid #d8d0b7; background:#fff;" onchange="calculateRentalTotal()">
+                                            <input type="hidden" name="end_date" id="endDate" value="<?= date('Y-m-d') ?>">
+                                        </div>
+                                        <div>
+                                            <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:5px; color:#596054;">Rental Duration (Hours)</label>
+                                            <div style="display:flex; align-items:center; gap:8px;">
+                                                <input type="number" name="rental_hours" id="rentalHours" required min="1" max="168" value="1" style="width:100%; padding:10px; border:1px solid #d8d0b7; background:#fff;" oninput="calculateRentalTotal()" onchange="calculateRentalTotal()">
+                                                <span style="font-size:13px; font-weight:600; color:#596054;">Hour(s)</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:5px; color:#596054;">End Date</label>
-                                        <input type="date" name="end_date" id="endDate" required min="<?= date('Y-m-d') ?>" style="width:100%; padding:10px; border:1px solid #d8d0b7; background:#fff;" onchange="calculateRentalTotal()">
+                                <?php else: ?>
+                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px;">
+                                        <div>
+                                            <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:5px; color:#596054;">Start Date</label>
+                                            <input type="date" name="start_date" id="startDate" required min="<?= date('Y-m-d') ?>" value="<?= date('Y-m-d') ?>" style="width:100%; padding:10px; border:1px solid #d8d0b7; background:#fff;" onchange="handleStartDateChange()">
+                                        </div>
+                                        <div>
+                                            <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:5px; color:#596054;">Return Date</label>
+                                            <input type="date" name="end_date" id="endDate" required min="<?= date('Y-m-d', strtotime('+1 day')) ?>" value="<?= date('Y-m-d', strtotime('+1 day')) ?>" style="width:100%; padding:10px; border:1px solid #d8d0b7; background:#fff;" onchange="calculateRentalTotal()">
+                                        </div>
                                     </div>
-                                </div>
+                                <?php endif; ?>
 
                                 <div style="margin-bottom:15px;">
                                     <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:5px; color:#596054;">Pickup Location / Farm Area</label>
-                                    <input type="text" name="pickup_location" required placeholder="e.g. Brgy. San Jose, Farm Gate 3..." style="width:100%; padding:10px; border:1px solid #d8d0b7; background:#fff;">
+                                    <input type="text" name="pickup_location" required value="<?= htmlspecialchars($equipment['location_city'] . ', ' . $equipment['location_province']) ?>" placeholder="e.g. Brgy. San Jose, Farm Gate 3..." style="width:100%; padding:10px; border:1px solid #d8d0b7; background:#fff;">
                                 </div>
 
                                 <div style="margin-bottom:15px;">
@@ -1471,13 +1557,24 @@ $isOwner =
                                         <span>Rate:</span>
                                         <strong>₱<?= number_format((float)$equipment['rate_price'], 2) ?> / <?= htmlspecialchars($rateLabel) ?></strong>
                                     </div>
-                                    <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px;">
+                                    <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:5px;">
                                         <span>Estimated Duration:</span>
-                                        <strong id="calcDuration">1 day</strong>
+                                        <strong id="calcDuration"><?= $isHourly ? '1 hour' : '1 day' ?></strong>
+                                    </div>
+                                    <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:5px;">
+                                        <span>Rental Subtotal:</span>
+                                        <strong id="calcSubtotal">₱<?= number_format((float)$equipment['rate_price'], 2) ?></strong>
+                                    </div>
+                                    <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px; color:#854d0e;">
+                                        <span>Refundable Security Deposit (20%):</span>
+                                        <strong id="calcDeposit">₱<?= number_format((float)$equipment['rate_price'] * 0.20, 2) ?></strong>
                                     </div>
                                     <div style="display:flex; justify-content:space-between; font-size:18px; font-weight:700; border-top:1px solid #eee; padding-top:8px; color:var(--forest-900);">
-                                        <span>Total Amount:</span>
-                                        <strong id="calcTotal">₱<?= number_format((float)$equipment['rate_price'], 2) ?></strong>
+                                        <span>Total Amount Payable:</span>
+                                        <strong id="calcTotal">₱<?= number_format((float)$equipment['rate_price'] * 1.20, 2) ?></strong>
+                                    </div>
+                                    <div style="font-size:11px; color:#777; margin-top:6px; line-height:1.4;">
+                                        * Note: Includes a 20% refundable security deposit for equipment damage or loss protection, returned upon equipment inspection.
                                     </div>
                                 </div>
 
@@ -1487,45 +1584,290 @@ $isOwner =
                     </div>
 
                     <script>
-                    function calculateRentalTotal() {
-                        const start = document.getElementById('startDate').value;
-                        const end = document.getElementById('endDate').value;
-                        const rate = parseFloat(document.getElementById('ratePrice').value) || 0;
-                        const rateType = document.getElementById('rateType').value;
-                        
-                        if (!start || !end) return;
-                        
-                        const d1 = new Date(start);
-                        const d2 = new Date(end);
-                        
-                        if (d2 < d1) {
-                            document.getElementById('endDate').value = start;
+                    function handleStartDateChange() {
+                        const startInput = document.getElementById('startDate');
+                        const endInput = document.getElementById('endDate');
+                        if (!startInput || !startInput.value) return;
+
+                        const d = new Date(startInput.value + 'T00:00:00');
+                        d.setDate(d.getDate() + 1);
+                        const yyyy = d.getFullYear();
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const minEnd = `${yyyy}-${mm}-${dd}`;
+
+                        if (endInput) {
+                            endInput.min = minEnd;
+                            if (!endInput.value || endInput.value < minEnd) {
+                                endInput.value = minEnd;
+                            }
                         }
-                        
-                        const diffTime = Math.abs(new Date(document.getElementById('endDate').value) - d1);
-                        const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1);
-                        
-                        let total = rate * diffDays;
-                        document.getElementById('calcDuration').innerText = diffDays + " day(s)";
-                        document.getElementById('calcTotal').innerText = "₱" + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        calculateRentalTotal();
+                    }
+
+                    function calculateRentalTotal() {
+                        const rate = parseFloat(document.getElementById('ratePrice').value) || 0;
+                        const rateType = (document.getElementById('rateType').value || 'daily').toLowerCase();
+                        const isHourly = (rateType === 'hourly' || rateType === 'hour');
+
+                        let subtotal = 0;
+                        let durationText = '';
+
+                        if (isHourly) {
+                            const hoursInput = document.getElementById('rentalHours');
+                            let hours = parseInt(hoursInput ? hoursInput.value : 1) || 1;
+                            if (hours < 1) hours = 1;
+                            if (hoursInput) hoursInput.value = hours;
+
+                            subtotal = rate * hours;
+                            durationText = hours + (hours === 1 ? " hour" : " hours");
+
+                            const start = document.getElementById('startDate').value;
+                            if (start) {
+                                const d1 = new Date(start + 'T00:00:00');
+                                const extraDays = Math.floor(hours / 24);
+                                d1.setDate(d1.getDate() + extraDays);
+                                const yyyy = d1.getFullYear();
+                                const mm = String(d1.getMonth() + 1).padStart(2, '0');
+                                const dd = String(d1.getDate()).padStart(2, '0');
+                                const endInput = document.getElementById('endDate');
+                                if (endInput) endInput.value = `${yyyy}-${mm}-${dd}`;
+                            }
+                        } else {
+                            const start = document.getElementById('startDate').value;
+                            const end = document.getElementById('endDate').value;
+                            if (!start || !end) return;
+
+                            const d1 = new Date(start + 'T00:00:00');
+                            const d2 = new Date(end + 'T00:00:00');
+
+                            if (d2 <= d1) {
+                                const nextDay = new Date(d1);
+                                nextDay.setDate(nextDay.getDate() + 1);
+                                const yyyy = nextDay.getFullYear();
+                                const mm = String(nextDay.getMonth() + 1).padStart(2, '0');
+                                const dd = String(nextDay.getDate()).padStart(2, '0');
+                                const endInput = document.getElementById('endDate');
+                                if (endInput) endInput.value = `${yyyy}-${mm}-${dd}`;
+                            }
+
+                            const finalEnd = new Date(document.getElementById('endDate').value + 'T00:00:00');
+                            const diffTime = Math.max(0, finalEnd - d1);
+                            const diffDays = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)));
+
+                            subtotal = rate * diffDays;
+                            durationText = diffDays + (diffDays === 1 ? " day" : " days");
+                        }
+
+                        let deposit = subtotal * 0.20;
+                        let total = subtotal + deposit;
+
+                        const durationElem = document.getElementById('calcDuration');
+                        const subtotalElem = document.getElementById('calcSubtotal');
+                        const depositElem = document.getElementById('calcDeposit');
+                        const totalElem = document.getElementById('calcTotal');
+
+                        if (durationElem) durationElem.innerText = durationText;
+                        if (subtotalElem) subtotalElem.innerText = "₱" + subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        if (depositElem) depositElem.innerText = "₱" + deposit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        if (totalElem) totalElem.innerText = "₱" + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     }
                     </script>
 
                 <?php endif; ?>
 
+                <!-- SECONDARY ACTIONS (RATE & REVIEW + REPORT) -->
+                <div style="display:flex; gap:10px; margin-top:20px; flex-wrap:wrap;">
+                    <a href="add_review.php?equipment_id=<?= (int)$equipment['equipment_id'] ?>" class="btn btn-outline-dark" style="padding:10px 18px; font-size:11px; text-decoration:none;">
+                        ⭐ Rate & Review
+                    </a>
+                    <button type="button" class="btn btn-outline-dark" onclick="openReportModal()" style="padding:10px 18px; font-size:11px; color:#8c2e1b; border-color:#d9a99f; cursor:pointer;">
+                        🚩 Report Machinery
+                    </button>
+                </div>
 
             </div>
 
-
         </div>
-
 
     </div>
 
+    <!-- =========================================================
+         RENTER REVIEWS & RATINGS SECTION
+    ========================================================= -->
+    <section id="equipmentReviews" style="margin-top:60px; border-top:1px solid #ded6b9; padding-top:45px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:20px; margin-bottom:28px;">
+            <div>
+                <span class="eyebrow" style="color:#768047; font-family:monospace; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Verified Renter Feedback</span>
+                <h2 style="font-family:Georgia,serif; font-size:clamp(26px, 3.5vw, 34px); color:#122017; margin:6px 0 0;">Machinery Reviews & Ratings</h2>
+            </div>
+            <div>
+                <a href="add_review.php?equipment_id=<?= (int)$equipment['equipment_id'] ?>" class="btn btn-solid" style="padding:12px 22px; font-size:12px; text-decoration:none;">
+                    ⭐ Write a Review
+                </a>
+            </div>
+        </div>
+
+        <!-- Rating Summary Box -->
+        <div style="background:#fff; border:1px solid #ded6b9; padding:28px; margin-bottom:28px; display:flex; align-items:center; gap:35px; flex-wrap:wrap;">
+            <div style="text-align:center; min-width:140px;">
+                <div style="font-family:Georgia,serif; font-size:46px; font-weight:700; color:#122017; line-height:1;">
+                    <?= $reviewCount > 0 ? number_format($avgRating, 1) : '0.0' ?>
+                </div>
+                <div style="color:#d4b65a; font-size:18px; margin:6px 0 4px; letter-spacing:2px;">
+                    <?= str_repeat('★', (int)round($avgRating)) . str_repeat('☆', 5 - (int)round($avgRating)) ?>
+                </div>
+                <div style="font-size:12px; color:#7d7967; font-family:monospace; text-transform:uppercase;">
+                    Based on <?= $reviewCount ?> <?= $reviewCount === 1 ? 'Review' : 'Reviews' ?>
+                </div>
+            </div>
+            <div style="flex:1; min-width:240px; border-left:1px solid #efe8d3; padding-left:28px;">
+                <p style="margin:0 0 8px; font-size:14px; color:#2d382e;">
+                    Verified renter reviews for <strong><?= htmlspecialchars($equipment['equipment_name']) ?></strong> from farm operators and agricultural renters across AgriMart.
+                </p>
+                <p style="margin:0; font-size:13px; color:#768047;">
+                    Have you rented this equipment? Share your feedback to help the agricultural community!
+                </p>
+            </div>
+        </div>
+
+        <!-- Reviews List -->
+        <?php if ($reviewCount > 0): ?>
+            <div style="display:grid; gap:16px;">
+                <?php foreach ($equipmentReviews as $rev): ?>
+                    <div style="background:#fff; border:1px solid #ded6b9; padding:22px 26px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:10px;">
+                            <div>
+                                <strong style="color:#122017; font-size:15px;"><?= htmlspecialchars($rev['reviewer_name']) ?></strong>
+                                <span style="font-size:11px; color:#23581c; margin-left:8px; background:#e0edd5; padding:2px 8px; border-radius:2px; font-weight:600;">✓ Verified Renter</span>
+                            </div>
+                            <span style="font-size:12px; color:#888; font-family:monospace;">
+                                <?= date('M d, Y', strtotime($rev['created_at'])) ?>
+                            </span>
+                        </div>
+                        <div style="color:#d4b65a; font-size:15px; margin-bottom:8px; letter-spacing:1.5px;">
+                            <?= str_repeat('★', (int)$rev['rating']) . str_repeat('☆', 5 - (int)$rev['rating']) ?>
+                        </div>
+                        <p style="margin:0; font-size:14px; color:#3d483e; line-height:1.6;">
+                            <?= nl2br(htmlspecialchars($rev['review_text'] ?: 'No written comment provided.')) ?>
+                        </p>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+            <div style="background:#fff; border:1px solid #ded6b9; padding:35px; text-align:center;">
+                <p style="margin:0 0 16px; font-size:15px; color:#5e604e;">There are no reviews for this machinery yet.</p>
+                <a href="add_review.php?equipment_id=<?= (int)$equipment['equipment_id'] ?>" class="btn btn-solid" style="padding:12px 24px; font-size:12px; text-decoration:none;">
+                    Leave the First Review
+                </a>
+            </div>
+        <?php endif; ?>
+    </section>
 
 </div>
 
 </main>
+
+<!-- =========================================================
+     REPORT EQUIPMENT MODAL
+========================================================= -->
+<div id="reportModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.65); z-index:9999; justify-content:center; align-items:center; padding:20px; box-sizing:border-box;">
+    <div style="background:#f5f0df; width:min(520px, 100%); padding:35px; border:1px solid #ded6b9; box-shadow:0 16px 40px rgba(0,0,0,0.3); position:relative; box-sizing:border-box;">
+        <button type="button" onclick="closeReportModal()" style="position:absolute; top:15px; right:15px; background:none; border:none; font-size:24px; cursor:pointer; color:#122017;">&times;</button>
+        <span style="font-family:monospace; font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:#8c2e1b; font-weight:700; display:block; margin-bottom:6px;">Safety & Moderation</span>
+        <h2 style="font-family:Georgia,serif; font-size:24px; color:#122017; margin:0 0 12px;">Report Equipment Listing</h2>
+        <p style="font-size:13.5px; color:#5e604e; line-height:1.5; margin-bottom:18px;">
+            Help keep AgriMart safe and trustworthy. If this equipment rental violates safety or marketplace policies, submit a report for immediate moderator review.
+        </p>
+
+        <form id="reportForm" onsubmit="submitReport(event)">
+            <input type="hidden" name="report_type" value="equipment">
+            <input type="hidden" name="item_id" value="<?= (int)$equipment['equipment_id'] ?>">
+
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-family:monospace; font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#5e604e; margin-bottom:6px; font-weight:600;">Reason for Report *</label>
+                <select name="reason" required style="width:100%; padding:12px; border:1px solid #d4c79c; background:#fff; font-size:14px;">
+                    <option value="fake_product">Fake / Inaccurate Machinery Details</option>
+                    <option value="misleading">Misleading Rental Rates or Location</option>
+                    <option value="scam_fraud">Suspected Fraud or Fake Owner</option>
+                    <option value="poor_quality">Inoperable / Unsafe Equipment</option>
+                    <option value="prohibited_item">Stolen or Unauthorized Machinery</option>
+                    <option value="other">Other Marketplace Violation</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <label style="display:block; font-family:monospace; font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#5e604e; margin-bottom:6px; font-weight:600;">Explanation / Details *</label>
+                <textarea name="description" required rows="4" style="width:100%; box-sizing:border-box; padding:12px; border:1px solid #d4c79c; background:#fff; font-size:14px;" placeholder="Please explain why you are reporting this equipment..."></textarea>
+            </div>
+
+            <div id="reportFeedback" style="display:none; padding:12px; margin-bottom:16px; font-size:13.5px;"></div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button type="button" onclick="closeReportModal()" class="btn btn-outline-dark" style="padding:10px 20px;">Cancel</button>
+                <button type="submit" id="reportSubmitBtn" class="btn" style="background:#8c2e1b; color:#fff !important; border:none; padding:10px 22px; cursor:pointer;">Submit Report</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openReportModal() {
+    <?php if (!$isLoggedIn): ?>
+        window.location.href = 'login.php';
+        return;
+    <?php endif; ?>
+    document.getElementById('reportModal').style.display = 'flex';
+}
+function closeReportModal() {
+    document.getElementById('reportModal').style.display = 'none';
+}
+function submitReport(e) {
+    e.preventDefault();
+    const form = document.getElementById('reportForm');
+    const btn = document.getElementById('reportSubmitBtn');
+    const fb = document.getElementById('reportFeedback');
+    const fd = new FormData(form);
+
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    fetch('report_listing.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+        fb.style.display = 'block';
+        if (data.success) {
+            fb.style.background = '#e0edd5';
+            fb.style.color = '#23581c';
+            fb.style.border = '1px solid #c5ddb4';
+            fb.textContent = '✓ ' + data.message;
+            form.reset();
+            setTimeout(() => { closeReportModal(); fb.style.display = 'none'; btn.disabled = false; btn.textContent = 'Submit Report'; }, 2200);
+        } else {
+            fb.style.background = '#fae6df';
+            fb.style.color = '#a54129';
+            fb.style.border = '1px solid #efb7aa';
+            fb.textContent = '✕ ' + data.message;
+            btn.disabled = false;
+            btn.textContent = 'Submit Report';
+        }
+    })
+    .catch(err => {
+        fb.style.display = 'block';
+        fb.style.background = '#fae6df';
+        fb.style.color = '#a54129';
+        fb.textContent = '✕ Error submitting report. Please try again.';
+        btn.disabled = false;
+        btn.textContent = 'Submit Report';
+    });
+}
+</script>
+
+
+
 
 
 

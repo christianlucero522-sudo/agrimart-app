@@ -59,21 +59,17 @@ if (
 */
 
 $sql = "
-
     SELECT
         user_id,
         full_name,
         email,
         password,
         role,
-        status
-
+        status,
+        email_verified
     FROM users
-
     WHERE email = ?
-
     LIMIT 1
-
 ";
 
 
@@ -155,15 +151,20 @@ if (
 |--------------------------------------------------------------------------
 */
 
-if (
-    $user['status'] !== 'active'
-) {
-
-    $_SESSION['login_error'] =
-        "Your account is not active.";
-
+if ($user['status'] === 'banned') {
+    $_SESSION['login_error'] = "Your account has been suspended due to marketplace policy violations. Please contact support.";
     header("Location: login.php");
+    exit;
+} elseif ($user['status'] !== 'active') {
+    $_SESSION['login_error'] = "Your account is currently inactive. Please contact support.";
+    header("Location: login.php");
+    exit;
+}
 
+// Check Email Verification (Admins exempt)
+if ($user['role'] !== 'admin' && isset($user['email_verified']) && (int)$user['email_verified'] === 0) {
+    $_SESSION['login_error'] = "Please verify your email address before logging in. We sent a verification link to your email.<br><a href='resend_verification.php?email=" . urlencode($user['email']) . "' style='color:#768047; font-weight:bold;'>Click here to resend verification link</a>";
+    header("Location: login.php?email=" . urlencode($user['email']));
     exit;
 }
 

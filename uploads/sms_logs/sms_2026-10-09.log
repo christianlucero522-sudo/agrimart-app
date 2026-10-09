@@ -1,0 +1,12 @@
+[2026-10-09 01:32:12] TO: 09605358372 (User #8)
+MESSAGE: AgriMart Alert: Your rental for tooothpick (Booking #1) is scheduled to end on October 09, 2026. Please prepare the machine for return at vskjsvsn to avoid a 5% daily late penalty. Owner: Christian Lucero (09999704103).
+STATUS: DELIVERED (Simulated Carrier Network Gate)
+------------------------------------------------------------
+[2026-10-09 01:32:12] TO: 09058642483 (User #9)
+MESSAGE: AgriMart OVERDUE ALERT: Your rental for Kubota L3408 4WD Farm Tractor (Booking #3) was due on October 06, 2026. You are currently 3 day(s) overdue. A 5% daily late penalty of ₱145.83/day (Total: ₱437.49) is being deducted from your deposit. Return machine immediately to flora. Owner: Pedro Penduko (09205554321).
+STATUS: DELIVERED (Simulated Carrier Network Gate)
+------------------------------------------------------------
+[2026-10-09 01:32:12] TO: 09999704103 (User #5)
+MESSAGE: AgriMart OVERDUE ALERT: Your rental for Yanmar Rice Combine Harvester (Booking #5) was due on October 07, 2026. You are currently 2 day(s) overdue. A 5% daily late penalty of ₱300.00/day (Total: ₱600.00) is being deducted from your deposit. Return machine immediately to flora. Owner: Pedro Penduko (09205554321).
+STATUS: DELIVERED (Simulated Carrier Network Gate)
+------------------------------------------------------------
