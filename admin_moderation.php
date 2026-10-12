@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'config.php';
+require_once 'sms_helper.php';
 
 // Require Admin Access
 if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'admin') {
@@ -21,14 +22,126 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim($_POST['action'] ?? '');
     $reportId = (int)($_POST['report_id'] ?? 0);
     $adminNotes = trim($_POST['admin_notes'] ?? '');
+    $itemType = trim($_POST['item_type'] ?? '');
+    $itemId = (int)($_POST['item_id'] ?? 0);
 
-    if ($reportId > 0) {
+    // 1. Direct Retrieval Approval from Appeals Section or Table
+    if ($action === 'approve_retrieval' && $itemId > 0) {
+        $conn->begin_transaction();
+        try {
+            $sellerId = 0;
+            $itemName = '';
+            $sellerPhone = '';
+
+            if ($itemType === 'product') {
+                $pRes = $conn->query("SELECT p.product_name, p.user_id, u.phone FROM products p INNER JOIN users u ON p.user_id = u.user_id WHERE p.product_id = $itemId LIMIT 1");
+                if ($pRow = $pRes->fetch_assoc()) {
+                    $sellerId = (int)$pRow['user_id'];
+                    $itemName = $pRow['product_name'];
+                    $sellerPhone = $pRow['phone'] ?? '';
+                }
+                $conn->query("UPDATE products SET status = 'active', admin_deactivated = 0, retrieval_status = 'approved', deactivation_reason = NULL WHERE product_id = $itemId");
+            } elseif ($itemType === 'equipment') {
+                $eRes = $conn->query("SELECT e.equipment_name, e.user_id, u.phone FROM equipment e INNER JOIN users u ON e.user_id = u.user_id WHERE e.equipment_id = $itemId LIMIT 1");
+                if ($eRow = $eRes->fetch_assoc()) {
+                    $sellerId = (int)$eRow['user_id'];
+                    $itemName = $eRow['equipment_name'];
+                    $sellerPhone = $eRow['phone'] ?? '';
+                }
+                $conn->query("UPDATE equipment SET status = 'active', admin_deactivated = 0, retrieval_status = 'approved', deactivation_reason = NULL WHERE equipment_id = $itemId");
+            }
+
+            if ($sellerId > 0) {
+                // In-app notification to seller
+                $notifTitle = "✅ Listing Reinstated: " . $itemName;
+                $notifMsg = "Great news! AgriMart Administration has approved your retrieval appeal for \"" . $itemName . "\". Your listing has been reactivated and is now visible in the marketplace again.";
+                $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'system', ?)");
+                $nStmt->bind_param('issi', $sellerId, $notifTitle, $notifMsg, $itemId);
+                $nStmt->execute();
+                $nStmt->close();
+
+                // SMS Alert to seller
+                if (!empty($sellerPhone)) {
+                    $smsMsg = "AgriMart Notice: Your retrieval appeal for '$itemName' has been APPROVED by administration! Your listing is now active and public again.";
+                    sendSmsNotification($conn, $sellerId, $sellerPhone, $smsMsg);
+                }
+            }
+
+            // If report_id was provided, update report
+            if ($reportId > 0) {
+                $uStmt = $conn->prepare("UPDATE reports SET status = 'action_taken', admin_notes = CONCAT(COALESCE(admin_notes, ''), '\n[Reinstated] Retrieval appeal approved by admin.'), resolved_by = ? WHERE report_id = ?");
+                $uStmt->bind_param('ii', $currentAdminId, $reportId);
+                $uStmt->execute();
+                $uStmt->close();
+            }
+
+            $conn->commit();
+            $message = "Listing #$itemId ($itemName) has been APPROVED and REACTIVATED! The seller has been notified via In-App and SMS.";
+        } catch (Exception $e) {
+            $conn->rollback();
+            $error = "Failed to approve retrieval: " . $e->getMessage();
+        }
+    }
+
+    // 2. Direct Retrieval Rejection
+    elseif ($action === 'reject_retrieval' && $itemId > 0) {
+        $conn->begin_transaction();
+        try {
+            $sellerId = 0;
+            $itemName = '';
+            $sellerPhone = '';
+            $rejNote = !empty($adminNotes) ? $adminNotes : 'The submitted retrieval appeal does not satisfy marketplace guidelines.';
+
+            if ($itemType === 'product') {
+                $pRes = $conn->query("SELECT p.product_name, p.user_id, u.phone FROM products p INNER JOIN users u ON p.user_id = u.user_id WHERE p.product_id = $itemId LIMIT 1");
+                if ($pRow = $pRes->fetch_assoc()) {
+                    $sellerId = (int)$pRow['user_id'];
+                    $itemName = $pRow['product_name'];
+                    $sellerPhone = $pRow['phone'] ?? '';
+                }
+                $conn->query("UPDATE products SET retrieval_status = 'rejected' WHERE product_id = $itemId");
+            } elseif ($itemType === 'equipment') {
+                $eRes = $conn->query("SELECT e.equipment_name, e.user_id, u.phone FROM equipment e INNER JOIN users u ON e.user_id = u.user_id WHERE e.equipment_id = $itemId LIMIT 1");
+                if ($eRow = $eRes->fetch_assoc()) {
+                    $sellerId = (int)$eRow['user_id'];
+                    $itemName = $eRow['equipment_name'];
+                    $sellerPhone = $eRow['phone'] ?? '';
+                }
+                $conn->query("UPDATE equipment SET retrieval_status = 'rejected' WHERE equipment_id = $itemId");
+            }
+
+            if ($sellerId > 0) {
+                // In-app notification to seller
+                $notifTitle = "❌ Listing Retrieval Appeal Declined: " . $itemName;
+                $notifMsg = "Your retrieval appeal for \"" . $itemName . "\" was reviewed and declined by AgriMart Administration. Reason: " . $rejNote . ". Please review our listing policies.";
+                $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'system', ?)");
+                $nStmt->bind_param('issi', $sellerId, $notifTitle, $notifMsg, $itemId);
+                $nStmt->execute();
+                $nStmt->close();
+
+                // SMS Alert to seller
+                if (!empty($sellerPhone)) {
+                    $smsMsg = "AgriMart Notice: Your retrieval appeal for '$itemName' was declined by administration. Reason: $rejNote. Check My Products for details.";
+                    sendSmsNotification($conn, $sellerId, $sellerPhone, $smsMsg);
+                }
+            }
+
+            $conn->commit();
+            $message = "Retrieval appeal for Listing #$itemId has been declined. The seller has been notified.";
+        } catch (Exception $e) {
+            $conn->rollback();
+            $error = "Failed to reject retrieval: " . $e->getMessage();
+        }
+    }
+
+    // 3. Actions linked to a specific report
+    elseif ($reportId > 0) {
         // Fetch report details
         $rQuery = $conn->prepare("
             SELECT r.*, 
-                   u.full_name AS reported_user_name, u.email AS reported_user_email, u.status AS reported_user_status,
-                   p.product_name, p.status AS product_status,
-                   e.equipment_name, e.status AS equipment_status
+                   u.full_name AS reported_user_name, u.email AS reported_user_email, u.status AS reported_user_status, u.phone AS reported_user_phone,
+                   p.product_name, p.status AS product_status, p.admin_deactivated AS product_admin_deactivated,
+                   e.equipment_name, e.status AS equipment_status, e.admin_deactivated AS equipment_admin_deactivated
             FROM reports r
             LEFT JOIN users u ON r.reported_user_id = u.user_id
             LEFT JOIN products p ON r.product_id = p.product_id
@@ -45,8 +158,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $reportedUserId = (int)$report['reported_user_id'];
             $productId = !empty($report['product_id']) ? (int)$report['product_id'] : null;
             $equipmentId = !empty($report['equipment_id']) ? (int)$report['equipment_id'] : null;
+            $sellerPhone = trim($report['reported_user_phone'] ?? '');
 
-            // 1. Suspend / Ban Seller Account
+            // Action: Suspend / Ban Seller Account
             if ($action === 'suspend_seller') {
                 if ($reportedUserId > 0 && $reportedUserId !== $currentAdminId) {
                     $conn->begin_transaction();
@@ -57,9 +171,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $bStmt->execute();
                         $bStmt->close();
 
-                        // Deactivate all listings by this seller
-                        $conn->query("UPDATE products SET status = 'inactive' WHERE user_id = $reportedUserId");
-                        $conn->query("UPDATE equipment SET status = 'inactive' WHERE user_id = $reportedUserId");
+                        // Deactivate all listings by this seller and lock with admin_deactivated
+                        $reasonMsg = 'Seller account suspended by admin due to report findings.';
+                        $conn->query("UPDATE products SET status = 'inactive', admin_deactivated = 1, deactivation_reason = '$reasonMsg' WHERE user_id = $reportedUserId");
+                        $conn->query("UPDATE equipment SET status = 'inactive', admin_deactivated = 1, deactivation_reason = '$reasonMsg' WHERE user_id = $reportedUserId");
 
                         // Update report
                         $repNotes = !empty($adminNotes) ? $adminNotes : 'Seller account suspended and all listings deactivated due to policy violations.';
@@ -75,6 +190,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $nStmt->execute();
                         $nStmt->close();
 
+                        // Send notification to seller
+                        $sNotifTitle = "🚨 Account Suspended & Listings Deactivated";
+                        $sNotifMsg = "Your AgriMart seller account has been suspended by administration due to policy violations. All your active listings have been deactivated. Contact administration to appeal.";
+                        $snStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'system', ?)");
+                        $snStmt->bind_param('issi', $reportedUserId, $sNotifTitle, $sNotifMsg, $reportId);
+                        $snStmt->execute();
+                        $snStmt->close();
+
+                        if (!empty($sellerPhone)) {
+                            $smsText = "AgriMart Alert: Your seller account has been SUSPENDED and listings deactivated due to report findings. Contact support to appeal.";
+                            sendSmsNotification($conn, $reportedUserId, $sellerPhone, $smsText);
+                        }
+
                         $conn->commit();
                         $message = "Seller account #$reportedUserId (" . htmlspecialchars($report['reported_user_name'] ?? 'User') . ") has been SUSPENDED and all listings deactivated.";
                     } catch (Exception $e) {
@@ -84,31 +212,109 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // 2. Deactivate Specific Listing
+            // Action: Deactivate Specific Listing
             elseif ($action === 'deactivate_listing') {
                 $conn->begin_transaction();
                 try {
+                    $repReasonText = ucwords(str_replace('_', ' ', $report['reason'] ?? 'Violation'));
+                    $deactReason = !empty($adminNotes) ? $adminNotes : "Deactivated by administration due to report findings ($repReasonText).";
+                    $targetItemName = '';
+
                     if ($productId) {
-                        $conn->query("UPDATE products SET status = 'inactive' WHERE product_id = $productId");
+                        $targetItemName = $report['product_name'] ?? 'Product';
+                        $pUp = $conn->prepare("UPDATE products SET status = 'inactive', admin_deactivated = 1, deactivation_reason = ?, retrieval_status = 'none' WHERE product_id = ?");
+                        $pUp->bind_param('si', $deactReason, $productId);
+                        $pUp->execute();
+                        $pUp->close();
+
+                        // Notify seller
+                        $notifTitle = "🛑 Product Listing Deactivated by Admin: " . $targetItemName;
+                        $notifMsg = "Your product listing \"" . $targetItemName . "\" has been deactivated by AgriMart Administration following a report investigation (Reason: " . $deactReason . "). Only an administrator can reactivate this listing. If you have resolved the issue, you may submit a retrieval appeal message directly in \"My Products\".";
+                        $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'system', ?)");
+                        $nStmt->bind_param('issi', $reportedUserId, $notifTitle, $notifMsg, $productId);
+                        $nStmt->execute();
+                        $nStmt->close();
+
+                        // SMS Alert to seller
+                        if (!empty($sellerPhone)) {
+                            $smsMsg = "AgriMart Alert: Your product '$targetItemName' was deactivated by administration ($deactReason). Only an admin can reactivate it. Submit a retrieval request in My Products to appeal.";
+                            sendSmsNotification($conn, $reportedUserId, $sellerPhone, $smsMsg);
+                        }
                     } elseif ($equipmentId) {
-                        $conn->query("UPDATE equipment SET status = 'inactive' WHERE equipment_id = $equipmentId");
+                        $targetItemName = $report['equipment_name'] ?? 'Equipment';
+                        $eUp = $conn->prepare("UPDATE equipment SET status = 'inactive', admin_deactivated = 1, deactivation_reason = ?, retrieval_status = 'none' WHERE equipment_id = ?");
+                        $eUp->bind_param('si', $deactReason, $equipmentId);
+                        $eUp->execute();
+                        $eUp->close();
+
+                        // Notify seller/owner
+                        $notifTitle = "🛑 Equipment Listing Deactivated by Admin: " . $targetItemName;
+                        $notifMsg = "Your equipment listing \"" . $targetItemName . "\" has been deactivated by AgriMart Administration following a report investigation (Reason: " . $deactReason . "). Only an administrator can reactivate this listing. You can submit a retrieval appeal in \"My Equipment\".";
+                        $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'system', ?)");
+                        $nStmt->bind_param('issi', $reportedUserId, $notifTitle, $notifMsg, $equipmentId);
+                        $nStmt->execute();
+                        $nStmt->close();
+
+                        // SMS Alert to owner
+                        if (!empty($sellerPhone)) {
+                            $smsMsg = "AgriMart Alert: Your equipment '$targetItemName' was deactivated by administration ($deactReason). Only an admin can reactivate it. Submit a retrieval request in My Equipment to appeal.";
+                            sendSmsNotification($conn, $reportedUserId, $sellerPhone, $smsMsg);
+                        }
                     }
 
-                    $repNotes = !empty($adminNotes) ? $adminNotes : 'Listing deactivated by administration due to report findings.';
+                    $repNotes = !empty($adminNotes) ? $adminNotes : 'Listing deactivated by administration due to report findings. Notification and SMS sent to seller.';
                     $uStmt = $conn->prepare("UPDATE reports SET status = 'action_taken', admin_notes = ?, resolved_by = ? WHERE report_id = ?");
                     $uStmt->bind_param('sii', $repNotes, $currentAdminId, $reportId);
                     $uStmt->execute();
                     $uStmt->close();
 
                     $conn->commit();
-                    $message = "Listing has been successfully deactivated from the public marketplace.";
+                    $message = "Listing \"" . htmlspecialchars($targetItemName) . "\" has been deactivated and locked by Admin. The seller has been notified via In-App Notification and SMS.";
                 } catch (Exception $e) {
                     $conn->rollback();
                     $error = "Failed to deactivate listing: " . $e->getMessage();
                 }
             }
 
-            // 3. Dismiss Report
+            // Action: Reactivate Listing directly from Report
+            elseif ($action === 'reactivate_listing') {
+                $conn->begin_transaction();
+                try {
+                    $targetItemName = '';
+                    if ($productId) {
+                        $targetItemName = $report['product_name'] ?? 'Product';
+                        $conn->query("UPDATE products SET status = 'active', admin_deactivated = 0, retrieval_status = 'approved', deactivation_reason = NULL WHERE product_id = $productId");
+                        $nTitle = "✅ Product Listing Reactivated: " . $targetItemName;
+                        $nMsg = "Your product listing \"" . $targetItemName . "\" has been reactivated by AgriMart Administration and is now active for buyers on the marketplace.";
+                        $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'system', ?)");
+                        $nStmt->bind_param('issi', $reportedUserId, $nTitle, $nMsg, $productId);
+                        $nStmt->execute();
+                        $nStmt->close();
+                    } elseif ($equipmentId) {
+                        $targetItemName = $report['equipment_name'] ?? 'Equipment';
+                        $conn->query("UPDATE equipment SET status = 'active', admin_deactivated = 0, retrieval_status = 'approved', deactivation_reason = NULL WHERE equipment_id = $equipmentId");
+                        $nTitle = "✅ Equipment Listing Reactivated: " . $targetItemName;
+                        $nMsg = "Your equipment listing \"" . $targetItemName . "\" has been reactivated by AgriMart Administration and is now available for rent.";
+                        $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'system', ?)");
+                        $nStmt->bind_param('issi', $reportedUserId, $nTitle, $nMsg, $equipmentId);
+                        $nStmt->execute();
+                        $nStmt->close();
+                    }
+
+                    if (!empty($sellerPhone)) {
+                        $smsMsg = "AgriMart Notice: Your listing '$targetItemName' has been reactivated by administration and is now live on the platform.";
+                        sendSmsNotification($conn, $reportedUserId, $sellerPhone, $smsMsg);
+                    }
+
+                    $conn->commit();
+                    $message = "Listing \"" . htmlspecialchars($targetItemName) . "\" has been reactivated by Admin. The seller was notified.";
+                } catch (Exception $e) {
+                    $conn->rollback();
+                    $error = "Failed to reactivate listing: " . $e->getMessage();
+                }
+            }
+
+            // Action: Dismiss Report
             elseif ($action === 'dismiss_report') {
                 $repNotes = !empty($adminNotes) ? $adminNotes : 'Report reviewed and dismissed. No violation detected.';
                 $uStmt = $conn->prepare("UPDATE reports SET status = 'dismissed', admin_notes = ?, resolved_by = ? WHERE report_id = ?");
@@ -118,7 +324,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = "Report #$reportId has been dismissed.";
             }
 
-            // 4. Mark as Reviewed (Pending further decision)
+            // Action: Mark as Reviewed (Pending further decision)
             elseif ($action === 'mark_reviewed') {
                 $uStmt = $conn->prepare("UPDATE reports SET status = 'reviewed', admin_notes = ?, resolved_by = ? WHERE report_id = ?");
                 $uStmt->bind_param('sii', $adminNotes, $currentAdminId, $reportId);
@@ -127,7 +333,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = "Report #$reportId marked as under review.";
             }
 
-            // 5. Reactivate / Unban Seller Account
+            // Action: Reactivate / Unban Seller Account
             elseif ($action === 'reactivate_seller') {
                 if ($reportedUserId > 0) {
                     $conn->query("UPDATE users SET status = 'active' WHERE user_id = $reportedUserId");
@@ -144,6 +350,39 @@ $pendingReports = (int)($conn->query("SELECT COUNT(*) AS c FROM reports WHERE st
 $actionReports = (int)($conn->query("SELECT COUNT(*) AS c FROM reports WHERE status = 'action_taken'")->fetch_assoc()['c'] ?? 0);
 $dismissedReports = (int)($conn->query("SELECT COUNT(*) AS c FROM reports WHERE status = 'dismissed'")->fetch_assoc()['c'] ?? 0);
 
+// Fetch Pending Retrieval Appeals across Products and Equipment
+$pendingAppeals = [];
+$pAppRes = $conn->query("
+    SELECT p.product_id AS item_id, 'product' AS item_type, p.product_name AS item_name, p.price AS item_price,
+           p.deactivation_reason, p.retrieval_message, p.retrieval_requested_at,
+           u.user_id AS seller_id, u.full_name AS seller_name, u.email AS seller_email, u.phone AS seller_phone
+    FROM products p
+    INNER JOIN users u ON p.user_id = u.user_id
+    WHERE p.admin_deactivated = 1 AND p.retrieval_status = 'pending'
+    ORDER BY p.retrieval_requested_at DESC
+");
+if ($pAppRes) {
+    while ($row = $pAppRes->fetch_assoc()) {
+        $pendingAppeals[] = $row;
+    }
+}
+
+$eAppRes = $conn->query("
+    SELECT e.equipment_id AS item_id, 'equipment' AS item_type, e.equipment_name AS item_name, e.rate_price AS item_price,
+           e.deactivation_reason, e.retrieval_message, e.retrieval_requested_at,
+           u.user_id AS seller_id, u.full_name AS seller_name, u.email AS seller_email, u.phone AS seller_phone
+    FROM equipment e
+    INNER JOIN users u ON e.user_id = u.user_id
+    WHERE e.admin_deactivated = 1 AND e.retrieval_status = 'pending'
+    ORDER BY e.retrieval_requested_at DESC
+");
+if ($eAppRes) {
+    while ($row = $eAppRes->fetch_assoc()) {
+        $pendingAppeals[] = $row;
+    }
+}
+$pendingAppealsCount = count($pendingAppeals);
+
 // Filters
 $statusFilter = trim($_GET['status'] ?? '');
 $reasonFilter = trim($_GET['reason'] ?? '');
@@ -154,7 +393,13 @@ $sql = "
            rep.full_name AS reporter_name, rep.email AS reporter_email,
            tgt.full_name AS reported_name, tgt.email AS reported_email, tgt.status AS reported_status,
            p.product_name, p.status AS product_status, p.price AS product_price,
+           p.admin_deactivated AS product_admin_deactivated, p.deactivation_reason AS product_deact_reason,
+           p.retrieval_message AS product_retrieval_msg, p.retrieval_status AS product_retrieval_status,
+           p.retrieval_requested_at AS product_retrieval_date,
            e.equipment_name, e.status AS equipment_status, e.rate_price AS equipment_rate,
+           e.admin_deactivated AS equipment_admin_deactivated, e.deactivation_reason AS equipment_deact_reason,
+           e.retrieval_message AS equipment_retrieval_msg, e.retrieval_status AS equipment_retrieval_status,
+           e.retrieval_requested_at AS equipment_retrieval_date,
            adm.full_name AS resolver_name
     FROM reports r
     INNER JOIN users rep ON r.reporter_id = rep.user_id
@@ -200,9 +445,12 @@ $stmt->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Report Moderation & Account Suspension — AgriMart Admin</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/admin.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin_modern.css?v=<?= time() ?>">
     <style>
         .report-badge { display: inline-block; padding: 4px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
         .reason-fake_product { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
@@ -225,45 +473,24 @@ $stmt->close();
         .btn-reactivate:hover { background: #166534; }
     </style>
 </head>
-<body class="admin-body">
+<body class="admin-console">
 
-<header class="site-header admin-header-nav">
-<div class="wrap">
-    <a href="admin_dashboard.php" class="logo">
-        <span class="logo-text"><b>AgriMart Admin</b><span>System Management Console</span></span>
-    </a>
-    <nav class="main-nav">
-        <a href="admin_dashboard.php">Dashboard</a>
-        <a href="admin_users.php">Users</a>
-        <a href="admin_sellers.php">Sellers</a>
-        <a href="admin_listings.php">Listings</a>
-        <a href="admin_rentals.php">Rentals</a>
-        <a href="admin_sales.php">Sales</a>
-        <a href="admin_moderation.php" class="active">
-            Reports & Moderation
-            <?php if ($pendingReports > 0): ?>
-                <span style="background:#ef4444; color:#fff; font-size:11px; padding:2px 6px; border-radius:10px; margin-left:4px;"><?= $pendingReports ?></span>
-            <?php endif; ?>
-        </a>
-        <a href="admin_reports.php">Reports</a>
-    </nav>
-    <div class="header-actions">
-        <span style="color:#fff; font-size:14px; margin-right:10px;">Admin: <strong><?= htmlspecialchars($firstName) ?></strong></span>
-        <a href="logout.php" class="btn btn-light">Logout</a>
-    </div>
-</div>
-</header>
+<?php 
+$activeNav = 'moderation';
+include __DIR__ . '/admin_sidebar.php'; 
+?>
 
-<main class="admin-wrap">
-    <div class="admin-page-head">
+<main class="admin-main">
+    <header class="admin-topbar">
         <div>
-            <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Marketplace Trust & Safety</span>
-            <h1>User Reports & Seller Account Suspension</h1>
+            <div class="topbar-subline">Marketplace trust, safety & retrieval appeals</div>
+            <h1 class="topbar-heading">Reports & <i>moderation.</i></h1>
         </div>
-        <div>
-            <a href="admin_dashboard.php" class="btn btn-light">← Dashboard</a>
+        <div class="topbar-actions">
+            <a href="admin_listings.php" class="btn-review-action">Manage Listings</a>
+            <a href="admin_dashboard.php" class="btn-review-action" style="background:#fff; color:#18241d; border:1px solid #dcd7cb;">Back to Overview</a>
         </div>
-    </div>
+    </header>
 
     <?php if (!empty($message)): ?>
         <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:16px 20px; margin-bottom:25px; font-weight:500;">
@@ -278,14 +505,19 @@ $stmt->close();
     <?php endif; ?>
 
     <!-- Metrics Cards -->
-    <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+    <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
         <div class="stat-card" style="<?= $pendingReports > 0 ? 'border: 2px solid #ef4444; background: #fffbfb;' : '' ?>">
-            <span class="label" style="color: <?= $pendingReports > 0 ? '#b91c1c' : '#768047' ?>;">Pending Investigation</span>
+            <span class="label" style="color: <?= $pendingReports > 0 ? '#b91c1c' : '#768047' ?>;">Pending Reports</span>
             <div class="val" style="color: <?= $pendingReports > 0 ? '#b91c1c' : '#122017' ?>;"><?= number_format($pendingReports) ?></div>
-            <span style="color:#6b6a59; font-size:12px;">Awaiting administrator action</span>
+            <span style="color:#6b6a59; font-size:12px;">Awaiting investigation</span>
+        </div>
+        <div class="stat-card" style="<?= $pendingAppealsCount > 0 ? 'border: 2px solid #f59e0b; background: #fffdf5;' : '' ?>">
+            <span class="label" style="color: <?= $pendingAppealsCount > 0 ? '#b45309' : '#768047' ?>;">Retrieval Appeals</span>
+            <div class="val" style="color: <?= $pendingAppealsCount > 0 ? '#b45309' : '#122017' ?>;"><?= number_format($pendingAppealsCount) ?></div>
+            <span style="color:#6b6a59; font-size:12px;">Sellers requesting reactivation</span>
         </div>
         <div class="stat-card">
-            <span class="label">Action Taken / Suspended</span>
+            <span class="label">Action Taken / Locked</span>
             <div class="val" style="color: #15803d;"><?= number_format($actionReports) ?></div>
             <span style="color:#6b6a59; font-size:12px;">Violations penalized</span>
         </div>
@@ -299,6 +531,96 @@ $stmt->close();
             <div class="val"><?= number_format($totalReports) ?></div>
             <span style="color:#6b6a59; font-size:12px;">Lifetime user submissions</span>
         </div>
+    </div>
+
+    <!-- Seller Retrieval Requests (Reinstatement Appeals) Section -->
+    <div class="admin-panel" style="<?= $pendingAppealsCount > 0 ? 'border: 2px solid #f59e0b; background:#fff;' : 'background:#fff;' ?> margin-bottom:30px;">
+        <div class="admin-panel-head" style="background:<?= $pendingAppealsCount > 0 ? '#fffbeb;' : '#f9f7f0;' ?> border-bottom:1px solid #eedda2;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:20px;">📩</span>
+                <div>
+                    <h2 style="margin:0; font-size:18px; color:#78350f;">Seller Listing Retrieval Appeals (<?= $pendingAppealsCount ?> Pending)</h2>
+                    <span style="font-size:12px; color:#92400e;">When an admin deactivates a listing, sellers can submit a retrieval explanation to request reactivation.</span>
+                </div>
+            </div>
+        </div>
+
+        <?php if ($pendingAppealsCount === 0): ?>
+            <div style="padding:25px; text-align:center; color:#6b6a59; font-size:13px;">
+                ✓ No pending seller retrieval requests. All deactivated listings are either resolved or have not requested appeal.
+            </div>
+        <?php else: ?>
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Item Details</th>
+                        <th>Seller Contact</th>
+                        <th>Deactivation Reason</th>
+                        <th>Seller Retrieval Message</th>
+                        <th>Requested Date</th>
+                        <th>Admin Decision</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($pendingAppeals as $ap): ?>
+                        <tr style="background:#fffdf7;">
+                            <td>
+                                <span style="font-size:10px; text-transform:uppercase; font-family:monospace; font-weight:700; color:<?= $ap['item_type'] === 'product' ? '#2e7d32' : '#1e40af' ?>;">
+                                    <?= $ap['item_type'] === 'product' ? '🌱 Product' : '🚜 Equipment' ?> #<?= (int)$ap['item_id'] ?>
+                                </span><br>
+                                <strong>
+                                    <a href="<?= $ap['item_type'] === 'product' ? 'product_details.php?id=' : 'equipment_details.php?id=' ?><?= (int)$ap['item_id'] ?>" target="_blank" style="color:#122017; text-decoration:underline;">
+                                        <?= htmlspecialchars($ap['item_name']) ?>
+                                    </a>
+                                </strong>
+                            </td>
+                            <td>
+                                <strong><?= htmlspecialchars($ap['seller_name']) ?></strong><br>
+                                <small style="color:#666;"><?= htmlspecialchars($ap['seller_email']) ?></small><br>
+                                <small style="color:#15803d; font-weight:600;">📱 <?= htmlspecialchars($ap['seller_phone'] ?: 'No phone') ?></small>
+                            </td>
+                            <td style="max-width:220px;">
+                                <div style="font-size:12px; color:#b91c1c; background:#fef2f2; padding:6px 8px; border:1px solid #fecaca;">
+                                    <?= htmlspecialchars($ap['deactivation_reason'] ?: 'Admin Moderation Deactivation') ?>
+                                </div>
+                            </td>
+                            <td style="max-width:320px;">
+                                <div style="background:#fffbeb; border:1px solid #fef3c7; color:#78350f; padding:8px 10px; font-size:13px; line-height:1.45; border-left:3px solid #f59e0b;">
+                                    "<?= nl2br(htmlspecialchars($ap['retrieval_message'])) ?>"
+                                </div>
+                            </td>
+                            <td>
+                                <small style="color:#777; font-size:12px;">
+                                    <?= !empty($ap['retrieval_requested_at']) ? date('M d, Y', strtotime($ap['retrieval_requested_at'])) : 'Recent' ?><br>
+                                    <?= !empty($ap['retrieval_requested_at']) ? date('h:i A', strtotime($ap['retrieval_requested_at'])) : '' ?>
+                                </small>
+                            </td>
+                            <td style="min-width:180px;">
+                                <div style="display:flex; flex-direction:column; gap:6px;">
+                                    <form action="admin_moderation.php" method="POST" onsubmit="return confirm('Approve this retrieval appeal and REACTIVATE \'<?= addslashes($ap['item_name']) ?>\' on AgriMart?');">
+                                        <input type="hidden" name="action" value="approve_retrieval">
+                                        <input type="hidden" name="item_type" value="<?= htmlspecialchars($ap['item_type']) ?>">
+                                        <input type="hidden" name="item_id" value="<?= (int)$ap['item_id'] ?>">
+                                        <button type="submit" class="admin-action-btn btn-reactivate" style="width:100%;">
+                                            ✓ Approve & Reactivate
+                                        </button>
+                                    </form>
+                                    <form action="admin_moderation.php" method="POST" onsubmit="return confirm('Decline this retrieval appeal?');">
+                                        <input type="hidden" name="action" value="reject_retrieval">
+                                        <input type="hidden" name="item_type" value="<?= htmlspecialchars($ap['item_type']) ?>">
+                                        <input type="hidden" name="item_id" value="<?= (int)$ap['item_id'] ?>">
+                                        <input type="text" name="admin_notes" placeholder="Reason for decline..." style="width:100%; box-sizing:border-box; padding:4px 6px; font-size:11px; margin-bottom:3px; border:1px solid #ded6b9;">
+                                        <button type="submit" class="admin-action-btn btn-ban" style="width:100%;">
+                                            ✕ Decline Appeal
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
     </div>
 
     <!-- Reports Table Panel -->
@@ -362,12 +684,38 @@ $stmt->close();
                                     <div style="font-size:12px; color:#666; margin-top:3px;">
                                         Listing Status: <span class="badge badge-<?= htmlspecialchars($r['product_status'] ?? 'inactive') ?>"><?= htmlspecialchars(ucfirst($r['product_status'] ?? 'N/A')) ?></span>
                                     </div>
+                                    <?php if (!empty($r['product_admin_deactivated'])): ?>
+                                        <div style="margin-top:6px; padding:6px 8px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; font-size:11px; color:#991b1b;">
+                                            <div style="font-weight:700;">🛑 Deactivated by Admin</div>
+                                            <?php if (!empty($r['product_deact_reason'])): ?>
+                                                <div style="color:#7f1d1d; margin-top:2px;">Reason: <?= htmlspecialchars($r['product_deact_reason']) ?></div>
+                                            <?php endif; ?>
+                                            <?php if (($r['product_retrieval_status'] ?? '') === 'pending'): ?>
+                                                <div style="margin-top:4px; padding:3px 6px; background:#fffbeb; border:1px solid #fde68a; border-radius:4px; color:#92400e; font-weight:600;">
+                                                    📩 Appeal Pending Review
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
                                 <?php elseif (!empty($r['equipment_name'])): ?>
                                     <span style="font-size:11px; text-transform:uppercase; font-family:monospace; color:#1e40af; font-weight:700;">🚜 Machinery</span><br>
                                     <strong><a href="equipment_details.php?id=<?= (int)$r['equipment_id'] ?>" target="_blank" style="color:#122017; text-decoration:underline;"><?= htmlspecialchars($r['equipment_name']) ?></a></strong>
                                     <div style="font-size:12px; color:#666; margin-top:3px;">
                                         Listing Status: <span class="badge badge-<?= htmlspecialchars($r['equipment_status'] ?? 'inactive') ?>"><?= htmlspecialchars(ucfirst($r['equipment_status'] ?? 'N/A')) ?></span>
                                     </div>
+                                    <?php if (!empty($r['equipment_admin_deactivated'])): ?>
+                                        <div style="margin-top:6px; padding:6px 8px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; font-size:11px; color:#991b1b;">
+                                            <div style="font-weight:700;">🛑 Deactivated by Admin</div>
+                                            <?php if (!empty($r['equipment_deact_reason'])): ?>
+                                                <div style="color:#7f1d1d; margin-top:2px;">Reason: <?= htmlspecialchars($r['equipment_deact_reason']) ?></div>
+                                            <?php endif; ?>
+                                            <?php if (($r['equipment_retrieval_status'] ?? '') === 'pending'): ?>
+                                                <div style="margin-top:4px; padding:3px 6px; background:#fffbeb; border:1px solid #fde68a; border-radius:4px; color:#92400e; font-weight:600;">
+                                                    📩 Appeal Pending Review
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <span style="font-size:11px; text-transform:uppercase; font-family:monospace; color:#854d0e; font-weight:700;">👤 User Account</span>
                                 <?php endif; ?>
@@ -394,7 +742,7 @@ $stmt->close();
                                     <div style="font-size:12px; color:#0d2818; background:#e8eedf; padding:6px 8px; border-left:3px solid #23581c; margin-top:5px;">
                                         <strong>Admin Note:</strong> <?= htmlspecialchars($r['admin_notes']) ?>
                                         <?php if (!empty($r['resolver_name'])): ?>
-                                            <span style="color:#666;">(by <?= htmlspecialchars($r['resolver_name']) ?>)</span>
+                                             <span style="color:#666;">(by <?= htmlspecialchars($r['resolver_name']) ?>)</span>
                                         <?php endif; ?>
                                     </div>
                                 <?php endif; ?>
@@ -442,13 +790,27 @@ $stmt->close();
                                         </form>
                                     <?php endif; ?>
 
-                                    <!-- 2. Deactivate Specific Listing -->
-                                    <?php if ((!empty($r['product_name']) && $r['product_status'] === 'active') || (!empty($r['equipment_name']) && $r['equipment_status'] === 'active')): ?>
-                                        <form action="admin_moderation.php" method="POST" onsubmit="return confirm('Remove / deactivate this listing from public display?');">
+                                    <!-- 2. Deactivate / Reactivate Listing -->
+                                    <?php 
+                                    $isProdActive = !empty($r['product_name']) && $r['product_status'] === 'active';
+                                    $isEquipActive = !empty($r['equipment_name']) && $r['equipment_status'] === 'active';
+                                    $isProdAdminLocked = !empty($r['product_name']) && !empty($r['product_admin_deactivated']);
+                                    $isEquipAdminLocked = !empty($r['equipment_name']) && !empty($r['equipment_admin_deactivated']);
+                                    ?>
+                                    <?php if ($isProdActive || $isEquipActive): ?>
+                                        <form action="admin_moderation.php" method="POST" onsubmit="return confirm('Deactivate and lock this listing from public display? The seller will receive in-app and SMS notifications, and only an admin can reactivate it.');">
                                             <input type="hidden" name="action" value="deactivate_listing">
                                             <input type="hidden" name="report_id" value="<?= (int)$r['report_id'] ?>">
                                             <button type="submit" class="admin-action-btn btn-deact" style="width:100%;">
-                                                🛑 Remove Listing
+                                                🛑 Deactivate & Lock Listing
+                                            </button>
+                                        </form>
+                                    <?php elseif ($isProdAdminLocked || $isEquipAdminLocked): ?>
+                                        <form action="admin_moderation.php" method="POST" onsubmit="return confirm('Reactivate this listing? It will become active and visible again, and the seller will be notified.');">
+                                            <input type="hidden" name="action" value="reactivate_listing">
+                                            <input type="hidden" name="report_id" value="<?= (int)$r['report_id'] ?>">
+                                            <button type="submit" class="admin-action-btn btn-reactivate" style="width:100%;">
+                                                🔓 Reactivate Listing
                                             </button>
                                         </form>
                                     <?php endif; ?>
@@ -473,15 +835,5 @@ $stmt->close();
         </table>
     </div>
 </main>
-
-<footer class="site-footer">
-<div class="wrap">
-    <div class="footer-bottom">
-        <span>© 2026 AgriMart Administration. All rights reserved.</span>
-        <span>Digital Market Platform on Agricultural Products</span>
-    </div>
-</div>
-</footer>
-
 </body>
 </html>

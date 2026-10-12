@@ -78,7 +78,17 @@ if (isset($_SESSION['user_id'])) {
                 </div>
                 <div class="field">
                     <label for="phone">Mobile Number</label>
-                    <input type="text" id="phone" name="phone" placeholder="09171234567">
+                    <input 
+                        type="tel" 
+                        id="phone" 
+                        name="phone" 
+                        inputmode="numeric" 
+                        maxlength="11" 
+                        placeholder="09171234567" 
+                        oninput="this.value = this.value.replace(/[^0-9]/g, '')" 
+                        onkeypress="return (event.charCode >= 48 && event.charCode <= 57) || event.keyCode === 8 || event.keyCode === 46"
+                    >
+                    <small style="display:block; font-size:11px; color:#6b6a59; margin-top:4px;">Digits only (e.g. 09171234567)</small>
                 </div>
             </div>
 
@@ -125,13 +135,36 @@ function togglePasswords(show) {
     if (p2) p2.type = show ? 'text' : 'password';
 }
 
+const phoneInput = document.getElementById('phone');
+if (phoneInput) {
+    phoneInput.addEventListener('input', function() {
+        this.value = this.value.replace(/[^0-9]/g, '');
+    });
+    phoneInput.addEventListener('paste', function(e) {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        this.value = text.replace(/[^0-9]/g, '').slice(0, 11);
+    });
+}
+
 document.getElementById('registerForm').addEventListener('submit', function(e) {
+    const phone = document.getElementById('phone').value.trim();
+    if (phone !== '') {
+        if (!/^[0-9]{11}$/.test(phone)) {
+            e.preventDefault();
+            alert('Please enter a valid 11-digit mobile number (e.g. 09171234567).');
+            document.getElementById('phone').focus();
+            return;
+        }
+    }
+
     const pass = document.getElementById('password').value;
     const confirm = document.getElementById('confirm_password').value;
     if (pass !== confirm) {
         e.preventDefault();
         alert('Passwords do not match. Please verify and try again.');
         document.getElementById('confirm_password').focus();
+        return;
     }
 });
 </script>

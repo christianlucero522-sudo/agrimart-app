@@ -1,234 +1,433 @@
 <?php
 session_start();
 require_once 'config.php';
+require_once 'sms_helper.php';
 
+// Require Admin Login
 if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'admin') {
     header('Location: login.php');
     exit;
 }
 
-$fullName = $_SESSION['full_name'] ?? 'Admin';
-$parts = explode(' ', trim($fullName));
-$firstName = $parts[0] ?? 'Admin';
-
+$adminFullName = $_SESSION['full_name'] ?? 'Administrator';
 $message = '';
-// Handle Product / Equipment Moderation Actions
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$messageType = 'success';
+
+// Handle Moderation & Management Actions (Deactivate, Activate, Delete)
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $itemType = trim($_POST['item_type'] ?? '');
     $itemId = (int)($_POST['item_id'] ?? 0);
     $action = trim($_POST['action'] ?? '');
+    $note = trim($_POST['admin_note'] ?? '');
 
     if ($itemId > 0) {
         if ($itemType === 'product') {
-            if ($action === 'toggle') {
-                $conn->query("UPDATE products SET status = IF(status = 'active', 'inactive', 'active') WHERE product_id = $itemId");
-                $message = "Product listing #$itemId status toggled.";
-            } elseif ($action === 'delete') {
-                $conn->query("DELETE FROM products WHERE product_id = $itemId");
-                $message = "Product #$itemId removed from marketplace.";
+            $pRes = $conn->query("SELECT p.product_name, p.status, p.user_id, u.phone FROM products p INNER JOIN users u ON p.user_id = u.user_id WHERE p.product_id = $itemId LIMIT 1");
+            $pRow = $pRes ? $pRes->fetch_assoc() : null;
+
+            if ($pRow) {
+                if ($action === 'deactivate') {
+                    $reason = !empty($note) ? $note : 'Deactivated by administrator';
+                    $escapedReason = $conn->real_escape_string($reason);
+                    $conn->query("UPDATE products SET status = 'inactive', admin_deactivated = 1, retrieval_status = 'rejected', deactivation_reason = '$escapedReason' WHERE product_id = $itemId");
+
+                    $nTitle = "⚠️ Product Listing Deactivated: " . $pRow['product_name'];
+                    $nMsg = "Your product listing \"" . $pRow['product_name'] . "\" has been deactivated by administration. Only an administrator can reactivate this listing upon review or retrieval request.";
+                    $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'system', ?)");
+                    $nStmt->bind_param('issi', $pRow['user_id'], $nTitle, $nMsg, $itemId);
+                    $nStmt->execute();
+                    $nStmt->close();
+
+                    if (!empty($pRow['phone'])) {
+                        sendSmsNotification($conn, $pRow['user_id'], $pRow['phone'], "AgriMart Alert: Your product '{$pRow['product_name']}' was deactivated by admin. Contact admin or submit retrieval request to reactivate.");
+                    }
+                    $message = "Product #$itemId ('{$pRow['product_name']}') deactivated. Seller notified.";
+                    $messageType = 'warning';
+                } elseif ($action === 'activate' || $action === 'approve') {
+                    $conn->query("UPDATE products SET status = 'active', admin_deactivated = 0, retrieval_status = 'approved', deactivation_reason = NULL WHERE product_id = $itemId");
+
+                    $nTitle = "✅ Product Listing Reactivated: " . $pRow['product_name'];
+                    $nMsg = "Your product listing \"" . $pRow['product_name'] . "\" has been reactivated by administration and is now live on the marketplace.";
+                    $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'system', ?)");
+                    $nStmt->bind_param('issi', $pRow['user_id'], $nTitle, $nMsg, $itemId);
+                    $nStmt->execute();
+                    $nStmt->close();
+
+                    if (!empty($pRow['phone'])) {
+                        sendSmsNotification($conn, $pRow['user_id'], $pRow['phone'], "AgriMart Notice: Your product '{$pRow['product_name']}' has been reactivated and is now live.");
+                    }
+                    $message = "Product #$itemId ('{$pRow['product_name']}') reactivated and published live.";
+                    $messageType = 'success';
+                } elseif ($action === 'delete') {
+                    $cRes = $conn->query("SELECT COUNT(*) AS c FROM order_items WHERE product_id = $itemId");
+                    $c = $cRes ? (int)($cRes->fetch_assoc()['c'] ?? 0) : 0;
+                    $conn->query("DELETE FROM cart_items WHERE product_id = $itemId");
+                    if ($c > 0) {
+                        $conn->query("UPDATE products SET status = 'deleted', quantity = 0 WHERE product_id = $itemId");
+                    } else {
+                        $conn->query("DELETE FROM products WHERE product_id = $itemId");
+                    }
+                    $message = "Product #$itemId removed from marketplace.";
+                }
             }
         } elseif ($itemType === 'equipment') {
-            if ($action === 'toggle') {
-                $conn->query("UPDATE equipment SET status = IF(status = 'active', 'inactive', 'active') WHERE equipment_id = $itemId");
-                $message = "Equipment listing #$itemId status toggled.";
-            } elseif ($action === 'delete') {
-                $conn->query("DELETE FROM equipment WHERE equipment_id = $itemId");
-                $message = "Equipment #$itemId removed from marketplace.";
+            $eRes = $conn->query("SELECT e.equipment_name, e.status, e.user_id, u.phone FROM equipment e INNER JOIN users u ON e.user_id = u.user_id WHERE e.equipment_id = $itemId LIMIT 1");
+            $eRow = $eRes ? $eRes->fetch_assoc() : null;
+
+            if ($eRow) {
+                if ($action === 'deactivate') {
+                    $reason = !empty($note) ? $note : 'Deactivated by administrator';
+                    $escapedReason = $conn->real_escape_string($reason);
+                    $conn->query("UPDATE equipment SET status = 'inactive', availability = 'maintenance', admin_deactivated = 1, retrieval_status = 'rejected', deactivation_reason = '$escapedReason' WHERE equipment_id = $itemId");
+
+                    $nTitle = "⚠️ Machinery Listing Deactivated: " . $eRow['equipment_name'];
+                    $nMsg = "Your machinery listing \"" . $eRow['equipment_name'] . "\" has been deactivated by administration. Only an administrator can reactivate this listing.";
+                    $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'system', ?)");
+                    $nStmt->bind_param('issi', $eRow['user_id'], $nTitle, $nMsg, $itemId);
+                    $nStmt->execute();
+                    $nStmt->close();
+
+                    if (!empty($eRow['phone'])) {
+                        sendSmsNotification($conn, $eRow['user_id'], $eRow['phone'], "AgriMart Alert: Your machinery '{$eRow['equipment_name']}' was deactivated by admin.");
+                    }
+                    $message = "Equipment #$itemId ('{$eRow['equipment_name']}') deactivated. Owner notified.";
+                    $messageType = 'warning';
+                } elseif ($action === 'activate' || $action === 'approve') {
+                    $conn->query("UPDATE equipment SET status = 'active', availability = 'available', admin_deactivated = 0, retrieval_status = 'approved', deactivation_reason = NULL WHERE equipment_id = $itemId");
+
+                    $nTitle = "✅ Machinery Listing Reactivated: " . $eRow['equipment_name'];
+                    $nMsg = "Your machinery listing \"" . $eRow['equipment_name'] . "\" has been reactivated by administration and is now live for rental.";
+                    $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'system', ?)");
+                    $nStmt->bind_param('issi', $eRow['user_id'], $nTitle, $nMsg, $itemId);
+                    $nStmt->execute();
+                    $nStmt->close();
+
+                    if (!empty($eRow['phone'])) {
+                        sendSmsNotification($conn, $eRow['user_id'], $eRow['phone'], "AgriMart Notice: Your machinery '{$eRow['equipment_name']}' has been reactivated and is now live.");
+                    }
+                    $message = "Equipment #$itemId ('{$eRow['equipment_name']}') reactivated and is available for rental.";
+                    $messageType = 'success';
+                } elseif ($action === 'delete') {
+                    $bRes = $conn->query("SELECT COUNT(*) AS c FROM bookings WHERE equipment_id = $itemId");
+                    $c = $bRes ? (int)($bRes->fetch_assoc()['c'] ?? 0) : 0;
+                    if ($c > 0) {
+                        $conn->query("UPDATE equipment SET status = 'deleted', availability = 'maintenance' WHERE equipment_id = $itemId");
+                    } else {
+                        $conn->query("DELETE FROM equipment WHERE equipment_id = $itemId");
+                    }
+                    $message = "Equipment #$itemId removed from marketplace.";
+                }
             }
         }
     }
 }
 
-// Fetch all products
-$products = $conn->query("
-    SELECT p.*, c.category_name, u.full_name AS seller_name
+// Fetch All Produce & Equipment Listings
+$productList = [];
+$equipmentList = [];
+
+// 1. Fetch Products
+$pRes = $conn->query("
+    SELECT 
+        p.product_id AS id,
+        'product' AS item_type,
+        p.product_name AS name,
+        p.price,
+        p.quantity,
+        p.unit,
+        p.image_url,
+        p.status,
+        p.admin_deactivated,
+        p.retrieval_status,
+        p.deactivation_reason,
+        c.category_name,
+        u.full_name AS seller_name
     FROM products p
     INNER JOIN categories c ON p.category_id = c.category_id
     INNER JOIN users u ON p.user_id = u.user_id
+    WHERE p.status NOT IN ('deleted', 'archived')
     ORDER BY p.product_id DESC
-")->fetch_all(MYSQLI_ASSOC);
+");
+if ($pRes) {
+    while ($r = $pRes->fetch_assoc()) {
+        $productList[] = $r;
+    }
+}
 
-// Fetch all equipment
-$equipment = $conn->query("
-    SELECT e.*, c.category_name, u.full_name AS owner_name
+// 2. Fetch Equipment
+$eRes = $conn->query("
+    SELECT 
+        e.equipment_id AS id,
+        'equipment' AS item_type,
+        e.equipment_name AS name,
+        e.rate_price AS price,
+        1 AS quantity,
+        COALESCE(e.rate_type, 'daily') AS unit,
+        e.image_url,
+        e.status,
+        e.availability,
+        e.admin_deactivated,
+        e.retrieval_status,
+        e.deactivation_reason,
+        c.category_name,
+        u.full_name AS seller_name
     FROM equipment e
     INNER JOIN categories c ON e.category_id = c.category_id
     INNER JOIN users u ON e.user_id = u.user_id
+    WHERE e.status NOT IN ('deleted', 'archived')
     ORDER BY e.equipment_id DESC
-")->fetch_all(MYSQLI_ASSOC);
+");
+if ($eRes) {
+    while ($r = $eRes->fetch_assoc()) {
+        $equipmentList[] = $r;
+    }
+}
+
+$activeNav = 'listings';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Listings ? AgriMart Admin</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>Manage Listings — AgriMart Admin Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin_modern.css?v=<?= time() ?>">
     <style>
-        body { margin: 0; background: #f4f0df; color: #162018; }
-        .site-header { background: var(--forest-950) !important; }
-        .admin-wrap { width: min(1300px, 100% - 40px); margin: 0 auto; padding: 120px 0 90px; }
-        .admin-header { margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 20px; }
-        .admin-header h1 { font-family: Georgia, serif; font-size: clamp(30px, 4vw, 42px); margin: 0; color: #122017; }
-        .table-panel { background: #fff; border: 1px solid #ded6b9; padding: 28px; margin-bottom: 35px; }
-        .table-panel h2 { font-family: Georgia, serif; font-size: 22px; margin: 0 0 15px; color: #122017; border-bottom: 1px solid #eee8d5; padding-bottom: 10px; }
-        .admin-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
-        .admin-table th, .admin-table td { padding: 12px 14px; border-bottom: 1px solid #eee8d5; }
-        .admin-table th { background: #f9f7f0; color: #5e604e; font-family: monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-        .badge { display: inline-block; padding: 4px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-        .badge-active, .badge-available { background: #e0edd5; color: #23581c; }
-        .badge-inactive, .badge-rented { background: #efe2b7; color: #6e5817; }
-        .badge-sold, .badge-maintenance { background: #f7dcd6; color: #7e2b1b; }
+        .notice-banner {
+            background: #e6f4ea;
+            border: 1px solid #cce8d4;
+            color: #137333;
+            padding: 12px 18px;
+            border-radius: 10px;
+            margin-bottom: 22px;
+            font-size: 13.5px;
+            font-weight: 500;
+        }
+        .notice-banner.warning {
+            background: #fef3c7;
+            border-color: #fde68a;
+            color: #92400e;
+        }
     </style>
 </head>
-<body>
+<body class="admin-console">
 
-<header class="site-header">
-<div class="wrap">
-    <a href="admin_dashboard.php" class="logo">
-        <span class="logo-text"><b>AgriMart Admin</b><span>System Management Console</span></span>
-    </a>
-    <nav class="main-nav">
-        <a href="admin_dashboard.php">Dashboard</a>
-        <a href="admin_users.php">Users</a>
-        <a href="admin_sellers.php">Sellers</a>
-        <a href="admin_listings.php" class="active">Listings</a>
-        <a href="admin_rentals.php">Rentals</a>
-        <a href="admin_sales.php">Sales</a>
-        <a href="admin_moderation.php">Reports & Moderation</a>
-        <a href="admin_reports.php">Reports</a>
-    </nav>
-    <div class="header-actions">
-        <span style="color:#fff; font-size:14px; margin-right:10px;">Admin: <strong><?= htmlspecialchars($firstName) ?></strong></span>
-        <a href="logout.php" class="btn btn-light">Logout</a>
-    </div>
-</div>
-</header>
+    <!-- Reusable Admin Sidebar -->
+    <?php include __DIR__ . '/admin_sidebar.php'; ?>
 
-<main class="admin-wrap">
-    <div class="admin-header">
-        <div>
-            <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Catalog Moderation</span>
-            <h1>Manage Products & Equipment Listings</h1>
-        </div>
-        <a href="admin_dashboard.php" class="btn btn-light">← Back to Dashboard</a>
-    </div>
+    <!-- Main Workspace -->
+    <main class="admin-main">
 
-    <?php if (!empty($message)): ?>
-        <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:15px; margin-bottom:20px; font-weight:500;">
-            ✓ <?= htmlspecialchars($message) ?>
-        </div>
-    <?php endif; ?>
+        <?php if (!empty($message)): ?>
+            <div class="notice-banner <?= $messageType === 'warning' ? 'warning' : '' ?>">
+                <?= $messageType === 'warning' ? '⚠️' : '✓' ?> <?= htmlspecialchars($message) ?>
+            </div>
+        <?php endif; ?>
 
-    <!-- Product Listings -->
-    <div class="table-panel">
-        <h2>Seed & Agricultural Produce Listings (<?= count($products) ?>)</h2>
-        <table class="admin-table">
-            <thead>
-                <tr>
-                    <th>Product</th>
-                    <th>Category</th>
-                    <th>Seller</th>
-                    <th>Price</th>
-                    <th>Stock</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($products)): ?>
-                    <tr><td colspan="7" style="text-align:center; padding:20px; color:#6b6a59;">No products listed.</td></tr>
-                <?php else: ?>
-                    <?php foreach ($products as $p): ?>
+        <!-- Header Topbar -->
+        <header class="admin-topbar">
+            <div>
+                <div class="topbar-subline">Marketplace Catalog</div>
+                <h1 class="topbar-heading">Manage Products &amp; Equipment <i>Listings</i></h1>
+            </div>
+
+            <div class="topbar-actions">
+                <div class="search-input-box">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px!important;height:16px!important;">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="listingSearchInput" class="search-bar-input" placeholder="Search by title, category, seller or owner...">
+                </div>
+            </div>
+        </header>
+
+        <!-- GROUP 1: Seed & Agricultural Produce Listings -->
+        <div class="listings-group-card">
+            <div class="group-card-head">
+                <h2 class="group-title">Seed &amp; Agricultural Produce Listings (<?= count($productList) ?>)</h2>
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="listings-table">
+                    <thead>
                         <tr>
-                            <td><strong><?= htmlspecialchars($p['product_name']) ?></strong></td>
-                            <td><?= htmlspecialchars($p['category_name']) ?></td>
-                            <td><?= htmlspecialchars($p['seller_name']) ?></td>
-                            <td><strong>₱<?= number_format((float)$p['price'], 2) ?></strong> / <?= htmlspecialchars($p['unit']) ?></td>
-                            <td><?= (int)$p['quantity'] ?> left</td>
-                            <td><span class="badge badge-<?= htmlspecialchars($p['status']) ?>"><?= htmlspecialchars(ucfirst($p['status'])) ?></span></td>
-                            <td>
-                                <form action="admin_listings.php" method="POST" style="display:inline;">
-                                    <input type="hidden" name="item_type" value="product">
-                                    <input type="hidden" name="item_id" value="<?= (int)$p['product_id'] ?>">
-                                    <input type="hidden" name="action" value="toggle">
-                                    <button type="submit" class="btn btn-light" style="padding:4px 8px; font-size:11px;">
-                                        <?= $p['status'] === 'active' ? 'Deactivate' : 'Activate' ?>
-                                    </button>
-                                </form>
-                                <form action="admin_listings.php" method="POST" style="display:inline;" onsubmit="return confirm('Permanently remove this product?');">
-                                    <input type="hidden" name="item_type" value="product">
-                                    <input type="hidden" name="item_id" value="<?= (int)$p['product_id'] ?>">
-                                    <input type="hidden" name="action" value="delete">
-                                    <button type="submit" class="btn btn-light" style="padding:4px 8px; font-size:11px; background:#fae6df; color:#a54129; border-color:#efb7aa;">Delete</button>
-                                </form>
-                            </td>
+                            <th style="width: 28%;">PRODUCT</th>
+                            <th style="width: 18%;">CATEGORY</th>
+                            <th style="width: 14%;">SELLER</th>
+                            <th style="width: 16%;">PRICE</th>
+                            <th style="width: 8%;">STOCK</th>
+                            <th style="width: 6%;">STATUS</th>
+                            <th style="width: 10%; text-align: right;">ACTIONS</th>
                         </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($productList)): ?>
+                            <tr>
+                                <td colspan="7" style="text-align:center; padding:32px; color:#71717a;">
+                                    No agricultural produce listings found.
+                                </td>
+                            </tr>
+                        <?php else: ?>
+                            <?php foreach ($productList as $p): 
+                                $isActive = ($p['status'] === 'active' && (int)$p['admin_deactivated'] === 0);
+                                $pStatus = $isActive ? 'ACTIVE' : 'INACTIVE';
+                                $pBadgeClass = $isActive ? 'active' : 'inactive';
+                                $pUnitLabel = !empty($p['unit']) ? ' / ' . htmlspecialchars($p['unit']) : '';
+                                $pPriceFormatted = '<strong>₱' . number_format((float)$p['price'], 2) . '</strong>' . $pUnitLabel;
+                                $pStockText = (int)$p['quantity'] . ' left';
+                                $pSearchText = strtolower(htmlspecialchars($p['name'] . ' ' . ($p['category_name'] ?? '') . ' ' . ($p['seller_name'] ?? '')));
+                            ?>
+                                <tr class="listing-row-item" data-search="<?= $pSearchText ?>">
+                                    <td>
+                                        <span class="item-name-bold"><?= htmlspecialchars($p['name']) ?></span>
+                                    </td>
+                                    <td><?= htmlspecialchars($p['category_name'] ?: 'General Agriculture') ?></td>
+                                    <td><?= htmlspecialchars($p['seller_name'] ?: 'Farmer') ?></td>
+                                    <td><?= $pPriceFormatted ?></td>
+                                    <td><?= htmlspecialchars($pStockText) ?></td>
+                                    <td>
+                                        <span class="status-pill-badge <?= $pBadgeClass ?>"><?= $pStatus ?></span>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <div style="display: inline-flex; gap: 8px; justify-content: flex-end; align-items: center;">
+                                            <?php if ($isActive): ?>
+                                                <form action="admin_listings.php" method="POST" style="margin:0;" onsubmit="return confirm('Deactivate this listing from marketplace?');">
+                                                    <input type="hidden" name="item_type" value="product">
+                                                    <input type="hidden" name="item_id" value="<?= (int)$p['id'] ?>">
+                                                    <input type="hidden" name="action" value="deactivate">
+                                                    <button type="submit" class="btn-deact-action">DEACTIVATE</button>
+                                                </form>
+                                            <?php else: ?>
+                                                <form action="admin_listings.php" method="POST" style="margin:0;" onsubmit="return confirm('Reactivate this listing and publish it live?');">
+                                                    <input type="hidden" name="item_type" value="product">
+                                                    <input type="hidden" name="item_id" value="<?= (int)$p['id'] ?>">
+                                                    <input type="hidden" name="action" value="activate">
+                                                    <button type="submit" class="btn-activate-action">ACTIVATE</button>
+                                                </form>
+                                            <?php endif; ?>
+                                            <form action="admin_listings.php" method="POST" style="margin:0;" onsubmit="return confirm('Are you sure you want to permanently delete this listing?');">
+                                                <input type="hidden" name="item_type" value="product">
+                                                <input type="hidden" name="item_id" value="<?= (int)$p['id'] ?>">
+                                                <input type="hidden" name="action" value="delete">
+                                                <button type="submit" class="btn-delete-action">DELETE</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
-    <!-- Equipment Listings -->
-    <div class="table-panel">
-        <h2>Farm Equipment & Machinery Listings (<?= count($equipment) ?>)</h2>
-        <table class="admin-table">
-            <thead>
-                <tr>
-                    <th>Machinery</th>
-                    <th>Category</th>
-                    <th>Owner</th>
-                    <th>Rental Rate</th>
-                    <th>Availability</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($equipment)): ?>
-                    <tr><td colspan="7" style="text-align:center; padding:20px; color:#6b6a59;">No equipment listed.</td></tr>
-                <?php else: ?>
-                    <?php foreach ($equipment as $e): ?>
+        <!-- GROUP 2: Farm Equipment & Machinery Listings -->
+        <div class="listings-group-card">
+            <div class="group-card-head">
+                <h2 class="group-title">Farm Equipment &amp; Machinery Listings (<?= count($equipmentList) ?>)</h2>
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="listings-table">
+                    <thead>
                         <tr>
-                            <td><strong><?= htmlspecialchars($e['equipment_name']) ?></strong> <?php if (!empty($e['brand'])): ?><small style="color:#777;">(<?= htmlspecialchars($e['brand']) ?>)</small><?php endif; ?></td>
-                            <td><?= htmlspecialchars($e['category_name']) ?></td>
-                            <td><?= htmlspecialchars($e['owner_name']) ?></td>
-                            <td><strong>₱<?= number_format((float)$e['rate_price'], 2) ?></strong> / <?= htmlspecialchars($e['rate_type']) ?></td>
-                            <td><span class="badge badge-<?= htmlspecialchars($e['availability']) ?>"><?= htmlspecialchars(ucfirst($e['availability'])) ?></span></td>
-                            <td><span class="badge badge-<?= htmlspecialchars($e['status']) ?>"><?= htmlspecialchars(ucfirst($e['status'])) ?></span></td>
-                            <td>
-                                <form action="admin_listings.php" method="POST" style="display:inline;">
-                                    <input type="hidden" name="item_type" value="equipment">
-                                    <input type="hidden" name="item_id" value="<?= (int)$e['equipment_id'] ?>">
-                                    <input type="hidden" name="action" value="toggle">
-                                    <button type="submit" class="btn btn-light" style="padding:4px 8px; font-size:11px;">
-                                        <?= $e['status'] === 'active' ? 'Deactivate' : 'Activate' ?>
-                                    </button>
-                                </form>
-                                <form action="admin_listings.php" method="POST" style="display:inline;" onsubmit="return confirm('Permanently remove this equipment?');">
-                                    <input type="hidden" name="item_type" value="equipment">
-                                    <input type="hidden" name="item_id" value="<?= (int)$e['equipment_id'] ?>">
-                                    <input type="hidden" name="action" value="delete">
-                                    <button type="submit" class="btn btn-light" style="padding:4px 8px; font-size:11px; background:#fae6df; color:#a54129; border-color:#efb7aa;">Delete</button>
-                                </form>
-                            </td>
+                            <th style="width: 28%;">MACHINERY</th>
+                            <th style="width: 18%;">CATEGORY</th>
+                            <th style="width: 14%;">OWNER</th>
+                            <th style="width: 14%;">RENTAL RATE</th>
+                            <th style="width: 10%;">AVAILABILITY</th>
+                            <th style="width: 6%;">STATUS</th>
+                            <th style="width: 10%; text-align: right;">ACTIONS</th>
                         </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</main>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($equipmentList)): ?>
+                            <tr>
+                                <td colspan="7" style="text-align:center; padding:32px; color:#71717a;">
+                                    No farm equipment listings found.
+                                </td>
+                            </tr>
+                        <?php else: ?>
+                            <?php foreach ($equipmentList as $e): 
+                                $isActive = ($e['status'] === 'active' && (int)$e['admin_deactivated'] === 0);
+                                $eStatus = $isActive ? 'ACTIVE' : 'INACTIVE';
+                                $eBadgeClass = $isActive ? 'active' : 'inactive';
+                                $eRateLabel = !empty($e['unit']) ? ' / ' . htmlspecialchars($e['unit']) : ' / day';
+                                $ePriceFormatted = '<strong>₱' . number_format((float)$e['price'], 2) . '</strong>' . $eRateLabel;
+                                $avail = strtolower($e['availability'] ?? 'available');
+                                $availBadgeClass = ($avail === 'rented') ? 'rented' : (($avail === 'maintenance') ? 'maintenance' : 'available');
+                                $eSearchText = strtolower(htmlspecialchars($e['name'] . ' ' . ($e['category_name'] ?? '') . ' ' . ($e['seller_name'] ?? '')));
+                            ?>
+                                <tr class="listing-row-item" data-search="<?= $eSearchText ?>">
+                                    <td>
+                                        <span class="item-name-bold"><?= htmlspecialchars($e['name']) ?></span>
+                                    </td>
+                                    <td><?= htmlspecialchars($e['category_name'] ?: 'Machinery & Tools') ?></td>
+                                    <td><?= htmlspecialchars($e['seller_name'] ?: 'Owner') ?></td>
+                                    <td><?= $ePriceFormatted ?></td>
+                                    <td>
+                                        <span class="status-pill-badge <?= $availBadgeClass ?>"><?= strtoupper(htmlspecialchars($e['availability'] ?? 'AVAILABLE')) ?></span>
+                                    </td>
+                                    <td>
+                                        <span class="status-pill-badge <?= $eBadgeClass ?>"><?= $eStatus ?></span>
+                                    </td>
+                                    <td style="text-align: right;">
+                                        <div style="display: inline-flex; gap: 8px; justify-content: flex-end; align-items: center;">
+                                            <?php if ($isActive): ?>
+                                                <form action="admin_listings.php" method="POST" style="margin:0;" onsubmit="return confirm('Deactivate this machinery listing from marketplace?');">
+                                                    <input type="hidden" name="item_type" value="equipment">
+                                                    <input type="hidden" name="item_id" value="<?= (int)$e['id'] ?>">
+                                                    <input type="hidden" name="action" value="deactivate">
+                                                    <button type="submit" class="btn-deact-action">DEACTIVATE</button>
+                                                </form>
+                                            <?php else: ?>
+                                                <form action="admin_listings.php" method="POST" style="margin:0;" onsubmit="return confirm('Reactivate this machinery listing and publish it live?');">
+                                                    <input type="hidden" name="item_type" value="equipment">
+                                                    <input type="hidden" name="item_id" value="<?= (int)$e['id'] ?>">
+                                                    <input type="hidden" name="action" value="activate">
+                                                    <button type="submit" class="btn-activate-action">ACTIVATE</button>
+                                                </form>
+                                            <?php endif; ?>
+                                            <form action="admin_listings.php" method="POST" style="margin:0;" onsubmit="return confirm('Are you sure you want to permanently delete this listing?');">
+                                                <input type="hidden" name="item_type" value="equipment">
+                                                <input type="hidden" name="item_id" value="<?= (int)$e['id'] ?>">
+                                                <input type="hidden" name="action" value="delete">
+                                                <button type="submit" class="btn-delete-action">DELETE</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
-<footer class="site-footer">
-<div class="wrap">
-    <div class="footer-bottom">
-        <span>© 2026 AgriMart Administration. All rights reserved.</span>
-        <span>Digital Market Platform on Agricultural Products</span>
-    </div>
-</div>
-</footer>
+    </main>
+
+    <script>
+        // Live search filter across all grouped table rows
+        const searchInput = document.getElementById('listingSearchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', function(e) {
+                const query = e.target.value.toLowerCase().trim();
+                const rows = document.querySelectorAll('.listing-row-item');
+                rows.forEach(row => {
+                    const searchData = (row.getAttribute('data-search') || '').toLowerCase();
+                    if (searchData.includes(query)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            });
+        }
+    </script>
 
 </body>
 </html>

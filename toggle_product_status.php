@@ -70,7 +70,9 @@ if ($productId <= 0) {
 $sql = "
     SELECT
         product_id,
-        status
+        status,
+        admin_deactivated,
+        deactivation_reason
 
     FROM products
 
@@ -121,6 +123,18 @@ if (!$product) {
 
     exit;
 
+}
+
+/* =========================================================
+   BLOCKED IF DEACTIVATED BY ADMIN
+   When an admin deactivates a product, only an admin can
+   reactivate it again. The seller must send a retrieval appeal.
+========================================================= */
+
+if (!empty($product['admin_deactivated'])) {
+    $conn->close();
+    header('Location: my_products.php?error=admin_locked');
+    exit;
 }
 
 

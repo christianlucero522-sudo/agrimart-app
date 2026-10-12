@@ -23,6 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_id'])) {
     if ($bId > 0 && in_array($newStatus, $allowed)) {
         if ($newStatus === 'completed') {
             notifyRentalCompleted($conn, $bId);
+            $conn->query("UPDATE payments SET payment_status = 'paid' WHERE booking_id = $bId");
             $message = "Booking #$bId marked as Completed & Returned. Automatic SMS & in-app notifications sent.";
         } else {
             $conn->query("UPDATE bookings SET status = '$newStatus' WHERE booking_id = $bId");
@@ -33,6 +34,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_id'])) {
         }
     }
 }
+
+// Auto-sync completed bookings payment status to paid
+$conn->query("UPDATE payments p JOIN bookings b ON p.booking_id = b.booking_id SET p.payment_status = 'paid' WHERE b.status = 'completed' AND p.payment_status != 'paid'");
 
 $statusFilter = trim($_GET['status'] ?? '');
 
@@ -74,80 +78,49 @@ $rentals = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Rentals — AgriMart Admin</title>
-    <link rel="stylesheet" href="css/style.css">
-    <style>
-        body { margin: 0; background: #f4f0df; color: #162018; }
-        .site-header { background: var(--forest-950) !important; }
-        .admin-wrap { width: min(1300px, 100% - 40px); margin: 0 auto; padding: 120px 0 90px; }
-        .admin-header { margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 20px; }
-        .admin-header h1 { font-family: Georgia, serif; font-size: clamp(30px, 4vw, 42px); margin: 0; color: #122017; }
-        .table-panel { background: #fff; border: 1px solid #ded6b9; padding: 28px; border-radius: 4px; overflow-x: auto; }
-        .admin-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; min-width: 900px; }
-        .admin-table th, .admin-table td { padding: 12px 14px; border-bottom: 1px solid #eee8d5; vertical-align: top; }
-        .admin-table th { background: #f9f7f0; color: #5e604e; font-family: monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-        .badge { display: inline-block; padding: 4px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; border-radius: 3px; }
-        .badge-pending { background: #efe2b7; color: #6e5817; }
-        .badge-confirmed { background: #d0e3f5; color: #1b4975; }
-        .badge-ongoing { background: #e2d9f3; color: #432b70; }
-        .badge-completed { background: #e0edd5; color: #23581c; }
-        .badge-cancelled { background: #f7dcd6; color: #7e2b1b; }
-        .badge-overdue { background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; }
-        .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        .filter-btn { padding: 6px 14px; border: 1px solid #d8d0b7; background: #fff; text-decoration: none; color: #162018; font-size: 13px; border-radius: 3px; }
-        .filter-btn.active, .filter-btn:hover { background: var(--forest-900); color: #f5f0df; border-color: var(--forest-900); }
-    </style>
+    <title>Manage Rentals — AgriMart Admin Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin_modern.css?v=<?= time() ?>">
 </head>
-<body>
+<body class="admin-console">
 
-<header class="site-header">
-<div class="wrap">
-    <a href="admin_dashboard.php" class="logo">
-        <span class="logo-text"><b>AgriMart Admin</b><span>System Management Console</span></span>
-    </a>
-    <nav class="main-nav">
-        <a href="admin_dashboard.php">Dashboard</a>
-        <a href="admin_users.php">Users</a>
-        <a href="admin_sellers.php">Sellers</a>
-        <a href="admin_listings.php">Listings</a>
-        <a href="admin_rentals.php" class="active">Rentals</a>
-        <a href="admin_sales.php">Sales</a>
-        <a href="admin_moderation.php">Reports & Moderation</a>
-        <a href="admin_reports.php">Reports</a>
-    </nav>
-    <div class="header-actions">
-        <span style="color:#fff; font-size:14px; margin-right:10px;">Admin: <strong><?= htmlspecialchars($firstName) ?></strong></span>
-        <a href="logout.php" class="btn btn-light" style="background:#fff; color:#122017; font-weight:600; border:none; padding:8px 16px; border-radius:3px;">Logout</a>
-    </div>
-</div>
-</header>
+<?php 
+$activeNav = 'rentals';
+include __DIR__ . '/admin_sidebar.php'; 
+?>
 
-<main class="admin-wrap">
-    <div class="admin-header">
+<main class="admin-main">
+    <header class="admin-topbar">
         <div>
-            <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px; font-weight:700;">Machinery Booking Logs</span>
-            <h1>Manage Equipment Rentals & Schedules</h1>
+            <div class="topbar-subline">Machinery booking schedules</div>
+            <h1 class="topbar-heading">Rentals & <i>bookings.</i></h1>
         </div>
-        <a href="admin_dashboard.php" class="btn btn-light" style="background:#fff; color:#122017; border:1px solid #ded6b9; padding:8px 16px; text-decoration:none; border-radius:3px; font-size:13px;">← Back to Dashboard</a>
-    </div>
+        <div class="topbar-actions">
+            <a href="admin_dashboard.php" class="btn-review-action">Back to Overview</a>
+        </div>
+    </header>
 
     <?php if (!empty($message)): ?>
-        <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:15px; margin-bottom:20px; font-weight:500; border-radius:4px;">
+        <div style="background:#e6f4ea; border:1px solid #cce8d4; color:#137333; padding:12px 18px; border-radius:10px; margin-bottom:20px; font-weight:500;">
             ✓ <?= htmlspecialchars($message) ?>
         </div>
     <?php endif; ?>
 
-    <div class="filter-bar">
-        <a href="admin_rentals.php" class="filter-btn <?= empty($statusFilter) ? 'active' : '' ?>">All Rentals</a>
-        <a href="admin_rentals.php?status=pending" class="filter-btn <?= $statusFilter === 'pending' ? 'active' : '' ?>">Pending</a>
-        <a href="admin_rentals.php?status=confirmed" class="filter-btn <?= $statusFilter === 'confirmed' ? 'active' : '' ?>">Confirmed</a>
-        <a href="admin_rentals.php?status=ongoing" class="filter-btn <?= $statusFilter === 'ongoing' ? 'active' : '' ?>">Ongoing</a>
-        <a href="admin_rentals.php?status=overdue" class="filter-btn <?= $statusFilter === 'overdue' ? 'active' : '' ?>" style="color:#b91c1c;">⚠️ Overdue (5% Fee)</a>
-        <a href="admin_rentals.php?status=completed" class="filter-btn <?= $statusFilter === 'completed' ? 'active' : '' ?>">Completed</a>
-        <a href="admin_rentals.php?status=cancelled" class="filter-btn <?= $statusFilter === 'cancelled' ? 'active' : '' ?>">Cancelled</a>
+    <div class="filter-pills-row">
+        <a href="admin_rentals.php" class="filter-pill <?= empty($statusFilter) ? 'active' : '' ?>">All Rentals</a>
+        <a href="admin_rentals.php?status=pending" class="filter-pill <?= $statusFilter === 'pending' ? 'active' : '' ?>">Pending</a>
+        <a href="admin_rentals.php?status=confirmed" class="filter-pill <?= $statusFilter === 'confirmed' ? 'active' : '' ?>">Confirmed</a>
+        <a href="admin_rentals.php?status=ongoing" class="filter-pill <?= $statusFilter === 'ongoing' ? 'active' : '' ?>">Ongoing</a>
+        <a href="admin_rentals.php?status=overdue" class="filter-pill <?= $statusFilter === 'overdue' ? 'active' : '' ?>" style="color:#b91c1c;">⚠️ Overdue (5% Fee)</a>
+        <a href="admin_rentals.php?status=completed" class="filter-pill <?= $statusFilter === 'completed' ? 'active' : '' ?>">Completed</a>
+        <a href="admin_rentals.php?status=cancelled" class="filter-pill <?= $statusFilter === 'cancelled' ? 'active' : '' ?>">Cancelled</a>
     </div>
 
-    <div class="table-panel">
+    <div class="transactions-card">
         <table class="admin-table">
             <thead>
                 <tr>
@@ -196,7 +169,7 @@ $rentals = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <strong><?= htmlspecialchars(strtoupper($r['payment_method'] ?? 'CASH')) ?></strong> (<?= htmlspecialchars(ucfirst($r['payment_status'] ?? 'pending')) ?>)
+                                <strong><?= htmlspecialchars(strtoupper($r['payment_method'] ?? 'CASH')) ?></strong> (<?= ($r['status'] === 'completed') ? 'Paid' : htmlspecialchars(ucfirst($r['payment_status'] ?? 'pending')) ?>)
                                 <?php if (!empty($r['transaction_ref'])): ?>
                                     <br><small style="color:#777;">Ref: <?= htmlspecialchars($r['transaction_ref']) ?></small>
                                 <?php endif; ?>
@@ -229,15 +202,5 @@ $rentals = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
         </table>
     </div>
 </main>
-
-<footer class="site-footer">
-<div class="wrap">
-    <div class="footer-bottom">
-        <span>© 2026 AgriMart Administration. All rights reserved.</span>
-        <span>Digital Market Platform on Agricultural Products</span>
-    </div>
-</div>
-</footer>
-
 </body>
 </html>

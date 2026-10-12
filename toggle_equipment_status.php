@@ -22,7 +22,7 @@ if ($equipmentId <= 0) {
 }
 
 // Check ownership or admin
-$sql = "SELECT equipment_id, status, availability FROM equipment WHERE equipment_id = ? " . ($userRole === 'admin' ? "" : "AND user_id = $userId") . " LIMIT 1";
+$sql = "SELECT equipment_id, status, availability, admin_deactivated, deactivation_reason FROM equipment WHERE equipment_id = ? " . ($userRole === 'admin' ? "" : "AND user_id = $userId") . " LIMIT 1";
 $stmt = $conn->prepare($sql);
 $stmt->bind_param('i', $equipmentId);
 $stmt->execute();
@@ -31,6 +31,13 @@ $stmt->close();
 
 if (!$equip) {
     header('Location: my_equipment.php');
+    exit;
+}
+
+// Block regular sellers from activating admin-locked equipment
+if (!empty($equip['admin_deactivated']) && $userRole !== 'admin') {
+    $conn->close();
+    header('Location: my_equipment.php?error=admin_locked');
     exit;
 }
 

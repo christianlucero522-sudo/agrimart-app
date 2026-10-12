@@ -49,9 +49,18 @@ $search = trim($_GET['search'] ?? '');
 $categoryId = isset($_GET['category']) ? (int) $_GET['category'] : 0;
 $availability = trim($_GET['availability'] ?? '');
 $filterLocation = trim($_GET['location'] ?? '');
+
+$cityFilter = $filterLocation;
+$provFilter = '';
+if (strpos($filterLocation, ',') !== false) {
+    $locParts = explode(',', $filterLocation, 2);
+    $cityFilter = trim($locParts[0]);
+    $provFilter = trim($locParts[1]);
+}
+
 $sortNearest = isset($_GET['nearest']) ? (int)$_GET['nearest'] : ($isLoggedIn && !empty($userCity) ? 1 : 0);
-$referenceCity = !empty($filterLocation) ? $filterLocation : $userCity;
-$referenceProvince = $userProvince;
+$referenceCity = !empty($cityFilter) ? $cityFilter : $userCity;
+$referenceProvince = !empty($provFilter) ? $provFilter : $userProvince;
 
 /* =========================================================
    GET EQUIPMENT CATEGORIES & LOCATIONS
@@ -170,13 +179,37 @@ if (in_array($availability, $allowedAvailability, true)) {
 ========================================================= */
 
 if ($filterLocation !== '') {
-    $sql .= " AND (e.location_city LIKE ? OR a.city_municipality LIKE ? OR e.location_province LIKE ? OR a.province LIKE ?) ";
-    $locVal = '%' . $filterLocation . '%';
-    $params[] = $locVal;
-    $params[] = $locVal;
-    $params[] = $locVal;
-    $params[] = $locVal;
-    $types .= 'ssss';
+    if (!empty($provFilter)) {
+        $sql .= " AND (
+            (e.location_city LIKE ? OR a.city_municipality LIKE ?)
+            OR (e.location_province LIKE ? OR a.province LIKE ?)
+            OR CONCAT_WS(', ', COALESCE(NULLIF(e.location_city, ''), a.city_municipality), COALESCE(NULLIF(e.location_province, ''), a.province)) LIKE ?
+        ) ";
+        $cVal = '%' . $cityFilter . '%';
+        $pVal = '%' . $provFilter . '%';
+        $fullVal = '%' . $filterLocation . '%';
+        $params[] = $cVal;
+        $params[] = $cVal;
+        $params[] = $pVal;
+        $params[] = $pVal;
+        $params[] = $fullVal;
+        $types .= 'sssss';
+    } else {
+        $sql .= " AND (
+            e.location_city LIKE ? 
+            OR a.city_municipality LIKE ? 
+            OR e.location_province LIKE ? 
+            OR a.province LIKE ?
+            OR CONCAT_WS(', ', COALESCE(NULLIF(e.location_city, ''), a.city_municipality), COALESCE(NULLIF(e.location_province, ''), a.province)) LIKE ?
+        ) ";
+        $locVal = '%' . $filterLocation . '%';
+        $params[] = $locVal;
+        $params[] = $locVal;
+        $params[] = $locVal;
+        $params[] = $locVal;
+        $params[] = $locVal;
+        $types .= 'sssss';
+    }
 }
 
 /* =========================================================
@@ -468,6 +501,69 @@ function getEquipmentImage($imageUrl)
 
             outline-offset:
                 1px;
+        }
+
+        .location-filter-wrapper {
+            position: relative;
+            display: inline-block;
+            min-width: 220px;
+        }
+
+        .location-filter-wrapper input {
+            width: 100% !important;
+            min-height: 50px;
+            padding: 0 34px 0 36px !important;
+            border: 1px solid rgba(17,55,36,.25);
+            background: #ffffff;
+            color: var(--forest-900);
+            font-family: inherit;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .location-filter-wrapper input:focus {
+            outline: 2px solid var(--wheat-300);
+            outline-offset: 1px;
+            border-color: #768047;
+        }
+
+        .loc-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            min-width: 250px;
+            background: #ffffff;
+            border: 1px solid #d4c79c;
+            box-shadow: 0 10px 28px rgba(0,0,0,0.12);
+            border-radius: 4px;
+            max-height: 260px;
+            overflow-y: auto;
+            z-index: 1000;
+            text-align: left;
+        }
+
+        .loc-option {
+            padding: 10px 14px;
+            font-size: 13.5px;
+            color: #122017;
+            cursor: pointer;
+            border-bottom: 1px solid #f7f5ed;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+
+        .loc-option:hover,
+        .loc-option.is-highlighted {
+            background: #f4f0df !important;
+            color: #173723 !important;
+        }
+
+        .loc-option:last-child {
+            border-bottom: none;
         }
 
 
@@ -1323,18 +1419,66 @@ function getEquipmentImage($imageUrl)
             </select>
 
 
-            <!-- LOCATION FILTER -->
-            <select name="location" onchange="this.form.submit()">
-                <option value="">All Locations</option>
-                <?php foreach ($locations as $loc): ?>
-                    <option
-                        value="<?= htmlspecialchars($loc['city'], ENT_QUOTES, 'UTF-8') ?>"
-                        <?= (strcasecmp($filterLocation, $loc['city']) === 0) ? 'selected' : '' ?>
+            <!-- LOCATION FILTER (TYPE OR SELECT) -->
+            <div class="location-filter-wrapper">
+                <div style="position:relative; display:flex; align-items:center;">
+                    <span style="position:absolute; left:12px; color:#768047; font-size:14px; pointer-events:none; z-index:2;">📍</span>
+                    <input
+                        type="text"
+                        name="location"
+                        id="locationInput"
+                        placeholder="Type location..."
+                        value="<?= htmlspecialchars($filterLocation, ENT_QUOTES, 'UTF-8') ?>"
+                        autocomplete="off"
+                        onfocus="openLocationDropdown()"
+                        onclick="openLocationDropdown()"
+                        oninput="filterLocationDropdown(this.value)"
+                        onkeydown="handleLocationKeydown(event)"
                     >
-                        📍 <?= htmlspecialchars($loc['city'], ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars($loc['province'], ENT_QUOTES, 'UTF-8') ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
+                    <?php if (!empty($filterLocation)): ?>
+                        <button
+                            type="button"
+                            onclick="clearLocationInput()"
+                            title="Clear location filter"
+                            style="position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; color:#888; font-size:18px; cursor:pointer; line-height:1; padding:4px 6px; z-index:2;"
+                        >&times;</button>
+                    <?php else: ?>
+                        <span
+                            onclick="document.getElementById('locationInput').focus(); openLocationDropdown();"
+                            title="View all available locations"
+                            style="position:absolute; right:12px; top:50%; transform:translateY(-50%); color:#888; font-size:11px; cursor:pointer; pointer-events:auto; z-index:2; padding:4px;"
+                        >▼</span>
+                    <?php endif; ?>
+                </div>
+
+                <!-- AUTOCOMPLETE / DROPDOWN SUGGESTIONS -->
+                <div id="locationDropdown" class="loc-dropdown">
+                    <div
+                        class="loc-option"
+                        onclick="selectLocation('')"
+                        style="color:#555; border-bottom:1px solid #f0eee5;"
+                    >
+                        <strong>All Locations</strong>
+                    </div>
+                    <?php foreach ($locations as $loc): 
+                        $locLabel = htmlspecialchars($loc['city'] . ', ' . $loc['province'], ENT_QUOTES, 'UTF-8');
+                    ?>
+                        <div
+                            class="loc-option"
+                            data-city="<?= strtolower($loc['city']) ?>"
+                            data-prov="<?= strtolower($loc['province']) ?>"
+                            data-full="<?= strtolower($loc['city'] . ' ' . $loc['province']) ?>"
+                            onclick="selectLocation('<?= addslashes($loc['city']) ?>')"
+                        >
+                            <span>📍</span>
+                            <span><?= $locLabel ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                    <div id="noLocFound" style="display:none; padding:12px 14px; font-size:12.5px; color:#888; font-style:italic;">
+                        Press [Search] or Enter to search equipment in this location
+                    </div>
+                </div>
+            </div>
 
             <!-- NEAREST SORTING TOGGLE -->
             <label style="display:inline-flex; align-items:center; gap:8px; background:#fff; border:1px solid rgba(17,55,36,.25); padding:0 16px; min-height:50px; cursor:pointer; font-size:13.5px; color:var(--forest-900);">
@@ -1750,6 +1894,80 @@ function getEquipmentImage($imageUrl)
 
 </footer>
 
+
+<script>
+function openLocationDropdown() {
+    const dd = document.getElementById('locationDropdown');
+    if (dd) dd.style.display = 'block';
+}
+
+function closeLocationDropdown() {
+    const dd = document.getElementById('locationDropdown');
+    if (dd) dd.style.display = 'none';
+}
+
+function selectLocation(val) {
+    const inp = document.getElementById('locationInput');
+    if (inp) {
+        inp.value = val;
+        closeLocationDropdown();
+        inp.form.submit();
+    }
+}
+
+function clearLocationInput() {
+    const inp = document.getElementById('locationInput');
+    if (inp) {
+        inp.value = '';
+        closeLocationDropdown();
+        inp.form.submit();
+    }
+}
+
+function filterLocationDropdown(query) {
+    openLocationDropdown();
+    const q = query.trim().toLowerCase();
+    const items = document.querySelectorAll('#locationDropdown .loc-option');
+    let visibleCount = 0;
+
+    items.forEach((item, idx) => {
+        if (idx === 0) {
+            // "All Locations" option
+            item.style.display = (q === '' || 'all locations'.includes(q)) ? 'flex' : 'none';
+            if (item.style.display === 'flex') visibleCount++;
+            return;
+        }
+        const full = item.getAttribute('data-full') || '';
+        if (q === '' || full.includes(q)) {
+            item.style.display = 'flex';
+            visibleCount++;
+        } else {
+            item.style.display = 'none';
+        }
+    });
+
+    const noMsg = document.getElementById('noLocFound');
+    if (noMsg) {
+        noMsg.style.display = (visibleCount === 0 && q !== '') ? 'block' : 'none';
+    }
+}
+
+function handleLocationKeydown(e) {
+    if (e.key === 'Escape') {
+        closeLocationDropdown();
+    } else if (e.key === 'Enter') {
+        closeLocationDropdown();
+    }
+}
+
+// Close when clicking outside
+document.addEventListener('click', function(e) {
+    const wrapper = document.querySelector('.location-filter-wrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+        closeLocationDropdown();
+    }
+});
+</script>
 
 </body>
 

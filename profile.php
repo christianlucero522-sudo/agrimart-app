@@ -479,7 +479,18 @@ $isFullyVerified = ($isEmailVer === 1 && $isIdVer === 'verified' && $isFaceVer =
                 </div>
                 <div class="form-group">
                     <label for="phone">Phone / Mobile Number (SMS Alerts)</label>
-                    <input type="text" id="phone" name="phone" class="form-control" value="<?= htmlspecialchars($user['phone'] ?? '') ?>" placeholder="e.g. 09171234567">
+                    <input 
+                        type="tel" 
+                        id="phone" 
+                        name="phone" 
+                        class="form-control" 
+                        inputmode="numeric" 
+                        maxlength="11" 
+                        value="<?= htmlspecialchars($user['phone'] ?? '') ?>" 
+                        placeholder="e.g. 09171234567"
+                        oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+                        onkeypress="return (event.charCode >= 48 && event.charCode <= 57) || event.keyCode === 8 || event.keyCode === 46"
+                    >
                 </div>
             </div>
 

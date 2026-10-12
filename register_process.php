@@ -48,6 +48,14 @@ if ($password !== $confirmPassword) {
     exit;
 }
 
+// Clean and validate phone number (digits only, Philippine 11-digit format e.g. 09171234567)
+$phone = preg_replace('/[^0-9]/', '', $phone);
+if (!empty($phone) && !preg_match('/^09[0-9]{9}$/', $phone)) {
+    $_SESSION['register_error'] = 'Please enter a valid 11-digit mobile number starting with 09 (e.g. 09171234567).';
+    header("Location: register.php");
+    exit;
+}
+
 // Check existing email
 $stmt = $conn->prepare("SELECT user_id FROM users WHERE email = ? LIMIT 1");
 $stmt->bind_param('s', $email);

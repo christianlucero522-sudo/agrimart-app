@@ -21,6 +21,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'])) {
     if ($orderId > 0) {
         if (!empty($newStatus)) {
             $conn->query("UPDATE orders SET order_status = '$newStatus' WHERE order_id = $orderId");
+            // When an order is marked completed, automatically mark payment as paid
+            if ($newStatus === 'completed') {
+                $conn->query("UPDATE payments SET payment_status = 'paid' WHERE order_id = $orderId");
+            }
         }
         if (!empty($newPayStatus)) {
             $conn->query("UPDATE payments SET payment_status = '$newPayStatus' WHERE order_id = $orderId");
@@ -28,6 +32,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'])) {
         $message = "Order #$orderId records updated successfully.";
     }
 }
+
+// Automatically sync existing completed orders so payment status is paid
+$conn->query("UPDATE payments p JOIN orders o ON p.order_id = o.order_id SET p.payment_status = 'paid' WHERE o.order_status = 'completed' AND p.payment_status != 'paid'");
 
 $statusFilter = trim($_GET['status'] ?? '');
 
@@ -67,77 +74,47 @@ $orders = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Sales & Transactions — AgriMart Admin</title>
-    <link rel="stylesheet" href="css/style.css">
-    <style>
-        body { margin: 0; background: #f4f0df; color: #162018; }
-        .site-header { background: var(--forest-950) !important; }
-        .admin-wrap { width: min(1300px, 100% - 40px); margin: 0 auto; padding: 120px 0 90px; }
-        .admin-header { margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 20px; }
-        .admin-header h1 { font-family: Georgia, serif; font-size: clamp(30px, 4vw, 42px); margin: 0; color: #122017; }
-        .table-panel { background: #fff; border: 1px solid #ded6b9; padding: 28px; }
-        .admin-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
-        .admin-table th, .admin-table td { padding: 12px 14px; border-bottom: 1px solid #eee8d5; }
-        .admin-table th { background: #f9f7f0; color: #5e604e; font-family: monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-        .badge { display: inline-block; padding: 4px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-        .badge-pending { background: #efe2b7; color: #6e5817; }
-        .badge-confirmed { background: #d0e3f5; color: #1b4975; }
-        .badge-processing { background: #e2d9f3; color: #432b70; }
-        .badge-completed, .badge-paid { background: #e0edd5; color: #23581c; }
-        .badge-cancelled, .badge-failed, .badge-refunded { background: #f7dcd6; color: #7e2b1b; }
-        .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        .filter-btn { padding: 6px 14px; border: 1px solid #d8d0b7; background: #fff; text-decoration: none; color: #162018; font-size: 13px; }
-        .filter-btn.active, .filter-btn:hover { background: var(--forest-900); color: #f5f0df; border-color: var(--forest-900); }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin_modern.css?v=<?= time() ?>">
 </head>
-<body>
+<body class="admin-console">
 
-<header class="site-header">
-<div class="wrap">
-    <a href="admin_dashboard.php" class="logo">
-        <span class="logo-text"><b>AgriMart Admin</b><span>System Management Console</span></span>
-    </a>
-    <nav class="main-nav">
-        <a href="admin_dashboard.php">Dashboard</a>
-        <a href="admin_users.php">Users</a>
-        <a href="admin_sellers.php">Sellers</a>
-        <a href="admin_listings.php">Listings</a>
-        <a href="admin_rentals.php">Rentals</a>
-        <a href="admin_sales.php" class="active">Sales</a>
-        <a href="admin_moderation.php">Reports & Moderation</a>
-        <a href="admin_reports.php">Reports</a>
-    </nav>
-    <div class="header-actions">
-        <span style="color:#fff; font-size:14px; margin-right:10px;">Admin: <strong><?= htmlspecialchars($firstName) ?></strong></span>
-        <a href="logout.php" class="btn btn-light">Logout</a>
-    </div>
-</div>
-</header>
+<?php 
+$activeNav = 'orders';
+include __DIR__ . '/admin_sidebar.php'; 
+?>
 
-<main class="admin-wrap">
-    <div class="admin-header">
+<main class="admin-main">
+    <header class="admin-topbar">
         <div>
-            <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Financial Supervision</span>
-            <h1>Manage Product Orders & Transactions</h1>
+            <div class="topbar-subline">Customer orders & transactions</div>
+            <h1 class="topbar-heading">Customer <i>orders.</i></h1>
         </div>
-        <a href="admin_dashboard.php" class="btn btn-light">← Back to Dashboard</a>
-    </div>
+        <div class="topbar-actions">
+            <a href="admin_dashboard.php" class="btn-review-action">Back to Overview</a>
+        </div>
+    </header>
 
     <?php if (!empty($message)): ?>
-        <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:15px; margin-bottom:20px; font-weight:500;">
+        <div style="background:#e6f4ea; border:1px solid #cce8d4; color:#137333; padding:12px 18px; border-radius:10px; margin-bottom:20px; font-weight:500;">
             ✓ <?= htmlspecialchars($message) ?>
         </div>
     <?php endif; ?>
 
-    <div class="filter-bar">
-        <a href="admin_sales.php" class="filter-btn <?= empty($statusFilter) ? 'active' : '' ?>">All Orders</a>
-        <a href="admin_sales.php?status=pending" class="filter-btn <?= $statusFilter === 'pending' ? 'active' : '' ?>">Pending</a>
-        <a href="admin_sales.php?status=confirmed" class="filter-btn <?= $statusFilter === 'confirmed' ? 'active' : '' ?>">Confirmed</a>
-        <a href="admin_sales.php?status=processing" class="filter-btn <?= $statusFilter === 'processing' ? 'active' : '' ?>">Processing</a>
-        <a href="admin_sales.php?status=completed" class="filter-btn <?= $statusFilter === 'completed' ? 'active' : '' ?>">Completed</a>
-        <a href="admin_sales.php?status=cancelled" class="filter-btn <?= $statusFilter === 'cancelled' ? 'active' : '' ?>">Cancelled</a>
+    <div class="filter-pills-row">
+        <a href="admin_sales.php" class="filter-pill <?= empty($statusFilter) ? 'active' : '' ?>">All Orders</a>
+        <a href="admin_sales.php?status=pending" class="filter-pill <?= $statusFilter === 'pending' ? 'active' : '' ?>">Pending</a>
+        <a href="admin_sales.php?status=confirmed" class="filter-pill <?= $statusFilter === 'confirmed' ? 'active' : '' ?>">Confirmed</a>
+        <a href="admin_sales.php?status=processing" class="filter-pill <?= $statusFilter === 'processing' ? 'active' : '' ?>">Processing</a>
+        <a href="admin_sales.php?status=completed" class="filter-pill <?= $statusFilter === 'completed' ? 'active' : '' ?>">Completed</a>
+        <a href="admin_sales.php?status=cancelled" class="filter-pill <?= $statusFilter === 'cancelled' ? 'active' : '' ?>">Cancelled</a>
     </div>
 
-    <div class="table-panel">
+    <div class="transactions-card">
         <table class="admin-table">
             <thead>
                 <tr>
@@ -156,7 +133,10 @@ $orders = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
                 <?php if (empty($orders)): ?>
                     <tr><td colspan="9" style="text-align:center; padding:30px; color:#6b6a59;">No customer orders found.</td></tr>
                 <?php else: ?>
-                    <?php foreach ($orders as $o): ?>
+                    <?php foreach ($orders as $o): 
+                        $isCompleted = ($o['order_status'] === 'completed');
+                        $payStatus = $isCompleted ? 'paid' : strtolower($o['payment_status'] ?? 'pending');
+                    ?>
                         <tr>
                             <td><strong>#<?= (int)$o['order_id'] ?></strong></td>
                             <td><?= htmlspecialchars($o['buyer_name']) ?><br><small style="color:#777;"><?= htmlspecialchars($o['buyer_phone'] ?: 'No phone') ?></small></td>
@@ -175,18 +155,18 @@ $orders = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
                             <td>
                                 <form action="admin_sales.php" method="POST" style="display:inline;">
                                     <input type="hidden" name="order_id" value="<?= (int)$o['order_id'] ?>">
-                                    <select name="payment_status" onchange="this.form.submit()" style="padding:3px 6px; font-size:12px;">
-                                        <option value="pending" <?= ($o['payment_status'] ?? '') === 'pending' ? 'selected' : '' ?>>Pending</option>
-                                        <option value="paid" <?= ($o['payment_status'] ?? '') === 'paid' ? 'selected' : '' ?>>Paid</option>
-                                        <option value="failed" <?= ($o['payment_status'] ?? '') === 'failed' ? 'selected' : '' ?>>Failed</option>
-                                        <option value="refunded" <?= ($o['payment_status'] ?? '') === 'refunded' ? 'selected' : '' ?>>Refunded</option>
+                                    <select name="payment_status" onchange="this.form.submit()" style="padding:3px 6px; font-size:12px; <?= $payStatus === 'paid' ? 'font-weight:600; color:#15803d;' : '' ?>">
+                                        <option value="pending" <?= $payStatus === 'pending' ? 'selected' : '' ?>>Pending</option>
+                                        <option value="paid" <?= $payStatus === 'paid' ? 'selected' : '' ?>>Paid</option>
+                                        <option value="failed" <?= $payStatus === 'failed' ? 'selected' : '' ?>>Failed</option>
+                                        <option value="refunded" <?= $payStatus === 'refunded' ? 'selected' : '' ?>>Refunded</option>
                                     </select>
                                 </form>
                             </td>
                             <td>
                                 <form action="admin_sales.php" method="POST" style="display:inline;">
                                     <input type="hidden" name="order_id" value="<?= (int)$o['order_id'] ?>">
-                                    <select name="order_status" onchange="this.form.submit()" style="padding:3px 6px; font-size:12px;">
+                                    <select name="order_status" onchange="onOrderStatusChange(this)" style="padding:3px 6px; font-size:12px; <?= $isCompleted ? 'font-weight:600; color:#15803d;' : '' ?>">
                                         <option value="pending" <?= $o['order_status'] === 'pending' ? 'selected' : '' ?>>Pending</option>
                                         <option value="confirmed" <?= $o['order_status'] === 'confirmed' ? 'selected' : '' ?>>Confirmed</option>
                                         <option value="processing" <?= $o['order_status'] === 'processing' ? 'selected' : '' ?>>Processing</option>
@@ -205,15 +185,19 @@ $orders = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
         </table>
     </div>
 </main>
-
-<footer class="site-footer">
-<div class="wrap">
-    <div class="footer-bottom">
-        <span>© 2026 AgriMart Administration. All rights reserved.</span>
-        <span>Digital Market Platform on Agricultural Products</span>
-    </div>
-</div>
-</footer>
-
+<script>
+function onOrderStatusChange(selectEl) {
+    if (selectEl.value === 'completed') {
+        const row = selectEl.closest('tr');
+        if (row) {
+            const paySelect = row.querySelector('select[name="payment_status"]');
+            if (paySelect) {
+                paySelect.value = 'paid';
+            }
+        }
+    }
+    selectEl.form.submit();
+}
+</script>
 </body>
 </html>

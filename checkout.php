@@ -1333,11 +1333,15 @@ function getCheckoutImage($imageUrl)
                                 Your Account / Mobile Number *
                             </label>
                             <input
-                                type="text"
+                                type="tel"
                                 id="buyer_account_number"
                                 name="buyer_account_number"
-                                placeholder="e.g. 0917-123-4567 or Acct #"
+                                inputmode="numeric"
+                                maxlength="16"
+                                placeholder="e.g. 09171234567"
                                 style="width:100%; padding:10px; border:1px solid #d8d0b7; background:#fff;"
+                                oninput="this.value = this.value.replace(/[^0-9\-]/g, '')"
+                                onkeypress="return (event.charCode >= 48 && event.charCode <= 57) || event.charCode === 45 || event.keyCode === 8"
                             >
                         </div>
 

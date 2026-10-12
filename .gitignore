@@ -1,0 +1,4 @@
+uploads/mail_logs/
+uploads/sms_logs/
+*.zip
+*.log

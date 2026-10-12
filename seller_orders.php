@@ -28,12 +28,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $chk->execute();
         $isMyOrder = $chk->get_result()->num_rows > 0;
         $chk->close();
-
         if ($isMyOrder) {
             $stmt = $conn->prepare("UPDATE orders SET order_status = ? WHERE order_id = ?");
             $stmt->bind_param('si', $newStatus, $orderId);
             $stmt->execute();
             $stmt->close();
+
+            if ($newStatus === 'completed') {
+                $conn->query("UPDATE payments SET payment_status = 'paid' WHERE order_id = $orderId");
+            }
 
             // Notify buyer
             $bStmt = $conn->prepare("SELECT buyer_id FROM orders WHERE order_id = ? LIMIT 1");

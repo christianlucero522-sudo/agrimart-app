@@ -38,8 +38,8 @@ $faceImage = $userInfo['face_image'] ?? '';
 $cartCount = (int)($conn->query("SELECT COALESCE(SUM(quantity), 0) AS c FROM cart_items ci INNER JOIN cart c ON ci.cart_id = c.cart_id WHERE c.user_id = $userId")->fetch_assoc()['c'] ?? 0);
 $ordersCount = (int)($conn->query("SELECT COUNT(*) AS c FROM orders WHERE buyer_id = $userId")->fetch_assoc()['c'] ?? 0);
 $rentalsCount = (int)($conn->query("SELECT COUNT(*) AS c FROM bookings WHERE renter_id = $userId")->fetch_assoc()['c'] ?? 0);
-$productsCount = (int)($conn->query("SELECT COUNT(*) AS c FROM products WHERE user_id = $userId")->fetch_assoc()['c'] ?? 0);
-$equipCount = (int)($conn->query("SELECT COUNT(*) AS c FROM equipment WHERE user_id = $userId")->fetch_assoc()['c'] ?? 0);
+$productsCount = (int)($conn->query("SELECT COUNT(*) AS c FROM products WHERE user_id = $userId AND status NOT IN ('deleted', 'archived', '')")->fetch_assoc()['c'] ?? 0);
+$equipCount = (int)($conn->query("SELECT COUNT(*) AS c FROM equipment WHERE user_id = $userId AND status NOT IN ('deleted', 'archived', '')")->fetch_assoc()['c'] ?? 0);
 $salesCount = (int)($conn->query("SELECT COUNT(DISTINCT oi.order_id) AS c FROM order_items oi WHERE oi.seller_id = $userId")->fetch_assoc()['c'] ?? 0);
 $unreadNotifs = (int)($conn->query("SELECT COUNT(*) AS c FROM notifications WHERE user_id = $userId AND is_read = 0")->fetch_assoc()['c'] ?? 0);
 ?>

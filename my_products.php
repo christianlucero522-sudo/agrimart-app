@@ -68,6 +68,11 @@ $sql = "
         p.unit,
         p.image_url,
         p.status,
+        p.admin_deactivated,
+        p.deactivation_reason,
+        p.retrieval_message,
+        p.retrieval_status,
+        p.retrieval_requested_at,
         c.category_name
 
     FROM products p
@@ -76,8 +81,7 @@ $sql = "
         ON p.category_id = c.category_id
 
     WHERE p.user_id = ?
-      AND p.status != 'deleted'
-      AND p.status != 'archived'
+      AND p.status NOT IN ('deleted', 'archived', '')
 
     ORDER BY p.product_id DESC
 ";
@@ -984,11 +988,29 @@ function getMyProductImage($imageUrl)
         >
             <?php if ($_GET['error'] === 'verification_required'): ?>
                 Account Verification Required: You must complete Government ID and Face Biometrics verification before activating products for sale.
+            <?php elseif ($_GET['error'] === 'admin_locked'): ?>
+                🛑 <strong>Locked by Administration:</strong> This listing was deactivated by an administrator following report findings. Only an admin can reactivate it. Please submit a retrieval appeal below.
             <?php else: ?>
                 Unable to update the product listing.
             <?php endif; ?>
         </div>
 
+    <?php endif; ?>
+
+    <?php if (isset($_GET['appeal_submitted']) && $_GET['appeal_submitted'] === '1'): ?>
+        <div class="listing-message listing-message-success" style="background:#e8eedf; border:1px solid #cbd8bd; color:#173723;">
+            📩 <strong>Retrieval Appeal Submitted!</strong> Your request and message have been sent to AgriMart Administration for review. You will receive an in-app and SMS alert once decided.
+        </div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['appeal_error'])): ?>
+        <div class="listing-message listing-message-error">
+            <?php if ($_GET['appeal_error'] === 'too_short' || $_GET['appeal_error'] === 'empty'): ?>
+                Please provide a detailed explanation (at least 10 characters) explaining why your listing should be reactivated.
+            <?php else: ?>
+                Unable to submit retrieval appeal. Please try again.
+            <?php endif; ?>
+        </div>
     <?php endif; ?>
 
 
@@ -1033,28 +1055,34 @@ function getMyProductImage($imageUrl)
 
                         <!-- STATUS -->
 
-                        <span
-                            class="
-                                listing-status
+                        <?php if (!empty($product['admin_deactivated'])): ?>
+                            <span class="listing-status" style="background:#991b1b; color:#fff; font-weight:700;">
+                                DEACTIVATED BY ADMIN
+                            </span>
+                        <?php else: ?>
+                            <span
+                                class="
+                                    listing-status
 
-                                <?=
-                                    $product['status']
-                                    !== 'active'
-                                        ? 'status-inactive'
-                                        : ''
-                                ?>
-                            "
-                        >
+                                    <?=
+                                        $product['status']
+                                        !== 'active'
+                                            ? 'status-inactive'
+                                            : ''
+                                    ?>
+                                "
+                            >
 
-                            <?= htmlspecialchars(
-                                strtoupper(
-                                    $product['status']
-                                ),
-                                ENT_QUOTES,
-                                'UTF-8'
-                            ) ?>
+                                <?= htmlspecialchars(
+                                    strtoupper(
+                                        $product['status']
+                                    ),
+                                    ENT_QUOTES,
+                                    'UTF-8'
+                                ) ?>
 
-                        </span>
+                            </span>
+                        <?php endif; ?>
 
 
                     </div>
@@ -1088,6 +1116,38 @@ function getMyProductImage($imageUrl)
                             ) ?>
 
                         </h2>
+
+                        <?php if (!empty($product['admin_deactivated'])): ?>
+                            <div style="margin: 10px 0; padding: 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 6px; font-size: 12.5px; text-align: left;">
+                                <div style="font-weight: 700; color: #991b1b; display: flex; align-items: center; gap: 6px;">
+                                    🛑 Deactivated by Administration
+                                </div>
+                                <?php if (!empty($product['deactivation_reason'])): ?>
+                                    <div style="margin: 6px 0; color: #7f1d1d; font-size: 12px; line-height: 1.4;">
+                                        <strong>Reason:</strong> <?= htmlspecialchars($product['deactivation_reason']) ?>
+                                    </div>
+                                <?php endif; ?>
+                                <div style="color: #6b7280; font-size: 11px; margin-top: 4px;">
+                                    ⚠️ Only an administrator can reactivate this listing. Submit a retrieval appeal below.
+                                </div>
+                                <?php if (($product['retrieval_status'] ?? '') === 'pending'): ?>
+                                    <div style="margin-top: 8px; padding: 8px 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; color: #92400e; font-size: 12px;">
+                                        <strong>⏳ Retrieval Appeal Under Review</strong>
+                                        <div style="font-size: 11px; color: #78350f; margin-top: 3px;">
+                                            Submitted: <?= !empty($product['retrieval_requested_at']) ? date('M d, Y h:i A', strtotime($product['retrieval_requested_at'])) : 'Recently' ?>
+                                        </div>
+                                        <div style="margin-top: 4px; font-style: italic; color: #451a03; background: #fff; padding: 6px; border: 1px dashed #fcd34d; font-size: 11.5px;">
+                                            "<?= nl2br(htmlspecialchars($product['retrieval_message'])) ?>"
+                                        </div>
+                                    </div>
+                                <?php elseif (($product['retrieval_status'] ?? '') === 'rejected'): ?>
+                                    <div style="margin-top: 8px; padding: 8px 10px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; color: #991b1b; font-size: 12px;">
+                                        <strong>❌ Previous Appeal Declined</strong>
+                                        <div style="font-size: 11px; margin-top: 2px;">You can update and resubmit your appeal below with further details.</div>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
 
 
 
@@ -1202,61 +1262,71 @@ function getMyProductImage($imageUrl)
 
 
 
-                            <!-- ACTIVATE / DEACTIVATE -->
+                            <!-- ACTIVATE / DEACTIVATE / RETRIEVAL APPEAL -->
 
-                            <form
-                                action="toggle_product_status.php"
-                                method="POST"
-                                class="status-form"
-
-                                onsubmit="
-                                    return confirm(
-                                        'Are you sure you want to <?= $product['status'] === 'active'
-                                            ? 'deactivate'
-                                            : 'activate' ?> this product listing?'
-                                    );
-                                "
-                            >
-
-                                <input
-                                    type="hidden"
-                                    name="product_id"
-                                    value="<?= (int) $product['product_id'] ?>"
-                                >
-
-
+                            <?php if (!empty($product['admin_deactivated'])): ?>
                                 <button
-                                    type="submit"
-                                    class="
-                                        listing-action
-                                        status-button
-
-                                        <?=
-                                            $product['status']
-                                            !== 'active'
-                                                ? 'activate-button'
-                                                : ''
-                                        ?>
+                                    type="button"
+                                    onclick="openRetrievalModal('product', <?= (int)$product['product_id'] ?>, '<?= addslashes(htmlspecialchars($product['product_name'])) ?>', '<?= addslashes(htmlspecialchars($product['retrieval_message'] ?? '')) ?>', '<?= $product['retrieval_status'] ?? 'none' ?>')"
+                                    class="listing-action"
+                                    style="background:#173723; color:#fff; font-weight:700; border:1px solid #173723;"
+                                >
+                                    <?= ($product['retrieval_status'] ?? '') === 'pending' ? '✏️ Appeal' : '📨 Appeal' ?>
+                                </button>
+                            <?php else: ?>
+                                <form
+                                    action="toggle_product_status.php"
+                                    method="POST"
+                                    class="status-form"
+                                    onsubmit="
+                                        return confirm(
+                                            'Are you sure you want to <?= $product['status'] === 'active'
+                                                ? 'deactivate'
+                                                : 'activate' ?> this product listing?'
+                                        );
                                     "
                                 >
 
-                                    <?php if (
-                                        $product['status']
-                                        === 'active'
-                                    ): ?>
-
-                                        Deactivate
-
-                                    <?php else: ?>
-
-                                        Activate
-
-                                    <?php endif; ?>
-
-                                </button>
+                                    <input
+                                        type="hidden"
+                                        name="product_id"
+                                        value="<?= (int) $product['product_id'] ?>"
+                                    >
 
 
-                            </form>
+                                    <button
+                                        type="submit"
+                                        class="
+                                            listing-action
+                                            status-button
+
+                                            <?=
+                                                $product['status']
+                                                !== 'active'
+                                                    ? 'activate-button'
+                                                    : ''
+                                            ?>
+                                        "
+                                    >
+
+                                        <?php if (
+                                            $product['status']
+                                            === 'active'
+                                        ): ?>
+
+                                            Deactivate
+
+                                        <?php else: ?>
+
+                                            Activate
+
+                                        <?php endif; ?>
+
+                                    </button>
+
+
+                                </form>
+                            <?php endif; ?>
 
 
                             <!-- REMOVE / DELETE LISTING -->
@@ -1369,6 +1439,62 @@ $conn->close();
 
 ?>
 
+
+<!-- RETRIEVAL APPEAL MODAL -->
+<div id="retrievalModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(3px);">
+    <div style="background:#fff; width:100%; max-width:540px; padding:30px; box-sizing:border-box; border:1px solid #d4c79c; box-shadow:0 14px 40px rgba(0,0,0,0.25); border-radius:6px; animation:modalPop 0.2s ease-out;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+            <div>
+                <span style="font-family:monospace; font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:#991b1b; font-weight:700;">Reinstatement Request</span>
+                <h3 style="margin:4px 0 0; font-family:Georgia,serif; font-size:22px; color:#122017;">Send Retrieval Message to Admin</h3>
+            </div>
+            <button type="button" onclick="closeRetrievalModal()" style="background:none; border:none; font-size:24px; cursor:pointer; color:#777; line-height:1;">&times;</button>
+        </div>
+        <p style="font-size:13px; color:#555; line-height:1.5; margin-bottom:18px;">
+            Your listing for <strong id="modalItemName" style="color:#122017;"></strong> was deactivated by an administrator. Submit an explanation or proof of resolution below. Only an administrator can reactivate this listing.
+        </p>
+
+        <form action="submit_retrieval_request.php" method="POST">
+            <input type="hidden" name="item_type" id="modalItemType" value="product">
+            <input type="hidden" name="item_id" id="modalItemId" value="0">
+
+            <div style="margin-bottom:18px;">
+                <label style="display:block; font-family:monospace; font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#5e604e; margin-bottom:6px; font-weight:600;">
+                    Retrieval Message & Corrective Steps *
+                </label>
+                <textarea name="retrieval_message" id="modalRetrievalMsg" required rows="5" minlength="10" style="width:100%; box-sizing:border-box; padding:12px; border:1px solid #d4c79c; font-family:inherit; font-size:13.5px; line-height:1.5; border-radius:3px;" placeholder="Explain why your product complies with guidelines, actions taken to address report concerns, or provide verification details..."></textarea>
+                <small style="color:#777; font-size:11px; display:block; margin-top:4px;">Minimum 10 characters. Administration will review this appeal and notify you.</small>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button type="button" onclick="closeRetrievalModal()" class="btn" style="background:#eee; color:#333; border:none; padding:10px 18px; cursor:pointer; font-size:13px;">Cancel</button>
+                <button type="submit" class="btn btn-solid" style="background:#173723; color:#fff; border:none; padding:10px 22px; cursor:pointer; font-size:13px; font-weight:700;">
+                    Submit Appeal to Admin →
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openRetrievalModal(type, id, name, existingMsg, status) {
+    document.getElementById('modalItemType').value = type;
+    document.getElementById('modalItemId').value = id;
+    document.getElementById('modalItemName').textContent = name;
+    document.getElementById('modalRetrievalMsg').value = existingMsg || '';
+    document.getElementById('retrievalModal').style.display = 'flex';
+}
+function closeRetrievalModal() {
+    document.getElementById('retrievalModal').style.display = 'none';
+}
+// Close on outside click
+window.addEventListener('click', function(e) {
+    const modal = document.getElementById('retrievalModal');
+    if (e.target === modal) {
+        closeRetrievalModal();
+    }
+});
+</script>
 
 </body>
 

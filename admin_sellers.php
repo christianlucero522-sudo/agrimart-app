@@ -40,58 +40,33 @@ $sellers = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Sellers & Owners — AgriMart Admin</title>
-    <link rel="stylesheet" href="css/style.css">
-    <style>
-        body { margin: 0; background: #f4f0df; color: #162018; }
-        .site-header { background: var(--forest-950) !important; }
-        .admin-wrap { width: min(1300px, 100% - 40px); margin: 0 auto; padding: 120px 0 90px; }
-        .admin-header { margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 20px; }
-        .admin-header h1 { font-family: Georgia, serif; font-size: clamp(30px, 4vw, 42px); margin: 0; color: #122017; }
-        .table-panel { background: #fff; border: 1px solid #ded6b9; padding: 28px; }
-        .admin-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
-        .admin-table th, .admin-table td { padding: 12px 14px; border-bottom: 1px solid #eee8d5; }
-        .admin-table th { background: #f9f7f0; color: #5e604e; font-family: monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-        .badge { display: inline-block; padding: 4px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-        .badge-active { background: #e0edd5; color: #23581c; }
-        .badge-inactive { background: #efe2b7; color: #6e5817; }
-        .badge-banned { background: #f7dcd6; color: #7e2b1b; }
-    </style>
+    <title>Manage Sellers & Owners — AgriMart Admin Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin_modern.css?v=<?= time() ?>">
 </head>
-<body>
+<body class="admin-console">
 
-<header class="site-header">
-<div class="wrap">
-    <a href="admin_dashboard.php" class="logo">
-        <span class="logo-text"><b>AgriMart Admin</b><span>System Management Console</span></span>
-    </a>
-    <nav class="main-nav">
-        <a href="admin_dashboard.php">Dashboard</a>
-        <a href="admin_users.php">Users</a>
-        <a href="admin_sellers.php" class="active">Sellers</a>
-        <a href="admin_listings.php">Listings</a>
-        <a href="admin_rentals.php">Rentals</a>
-        <a href="admin_sales.php">Sales</a>
-        <a href="admin_moderation.php">Reports & Moderation</a>
-        <a href="admin_reports.php">Reports</a>
-    </nav>
-    <div class="header-actions">
-        <span style="color:#fff; font-size:14px; margin-right:10px;">Admin: <strong><?= htmlspecialchars($firstName) ?></strong></span>
-        <a href="logout.php" class="btn btn-light">Logout</a>
-    </div>
-</div>
-</header>
+<?php 
+$activeNav = 'sellers';
+include __DIR__ . '/admin_sidebar.php'; 
+?>
 
-<main class="admin-wrap">
-    <div class="admin-header">
+<main class="admin-main">
+    <header class="admin-topbar">
         <div>
-            <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Merchant Supervision</span>
-            <h1>Manage Sellers & Equipment Owners</h1>
+            <div class="topbar-subline">Merchant supervision & vendor analytics</div>
+            <h1 class="topbar-heading">Sellers & <i>owners.</i></h1>
         </div>
-        <a href="admin_dashboard.php" class="btn btn-light">← Back to Dashboard</a>
-    </div>
+        <div class="topbar-actions">
+            <a href="admin_dashboard.php" class="btn-review-action">Back to Overview</a>
+        </div>
+    </header>
 
-    <div class="table-panel">
+    <div class="transactions-card">
         <table class="admin-table">
             <thead>
                 <tr>
@@ -136,15 +111,5 @@ $sellers = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
         </table>
     </div>
 </main>
-
-<footer class="site-footer">
-<div class="wrap">
-    <div class="footer-bottom">
-        <span>© 2026 AgriMart Administration. All rights reserved.</span>
-        <span>Digital Market Platform on Agricultural Products</span>
-    </div>
-</div>
-</footer>
-
 </body>
 </html>

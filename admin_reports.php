@@ -11,7 +11,10 @@ $fullName = $_SESSION['full_name'] ?? 'Admin';
 $parts = explode(' ', trim($fullName));
 $firstName = $parts[0] ?? 'Admin';
 
-$reportType = trim($_GET['type'] ?? 'sales');
+$reportType = trim($_GET['type'] ?? '');
+if (empty($reportType)) {
+    $reportType = (isset($_GET['tab']) && $_GET['tab'] === 'payments') ? 'sales' : 'sales';
+}
 
 // 1. Sales Report Data
 $salesTotal = (float)($conn->query("SELECT SUM(amount) AS s FROM payments WHERE payment_status = 'paid'")->fetch_assoc()['s'] ?? 0);
@@ -33,13 +36,13 @@ $totalUsers = (int)($conn->query("SELECT COUNT(*) AS c FROM users WHERE role != 
 $activeUsers = (int)($conn->query("SELECT COUNT(*) AS c FROM users WHERE status = 'active' AND role != 'admin'")->fetch_assoc()['c'] ?? 0);
 $bannedUsers = (int)($conn->query("SELECT COUNT(*) AS c FROM users WHERE status = 'banned'")->fetch_assoc()['c'] ?? 0);
 $activeBuyers = (int)($conn->query("SELECT COUNT(DISTINCT buyer_id) AS c FROM orders")->fetch_assoc()['c'] ?? 0);
-$activeSellers = (int)($conn->query("SELECT COUNT(DISTINCT user_id) AS c FROM products")->fetch_assoc()['c'] ?? 0);
-$activeOwners = (int)($conn->query("SELECT COUNT(DISTINCT user_id) AS c FROM equipment")->fetch_assoc()['c'] ?? 0);
+$activeSellers = (int)($conn->query("SELECT COUNT(DISTINCT user_id) AS c FROM products WHERE status NOT IN ('deleted', 'archived', '')")->fetch_assoc()['c'] ?? 0);
+$activeOwners = (int)($conn->query("SELECT COUNT(DISTINCT user_id) AS c FROM equipment WHERE status NOT IN ('deleted', 'archived', '')")->fetch_assoc()['c'] ?? 0);
 $userList = $conn->query("
     SELECT u.*, 
            (SELECT COUNT(*) FROM orders WHERE buyer_id = u.user_id) AS orders_placed,
-           (SELECT COUNT(*) FROM products WHERE user_id = u.user_id) AS products_listed,
-           (SELECT COUNT(*) FROM equipment WHERE user_id = u.user_id) AS equipment_listed
+           (SELECT COUNT(*) FROM products WHERE user_id = u.user_id AND status NOT IN ('deleted', 'archived', '')) AS products_listed,
+           (SELECT COUNT(*) FROM equipment WHERE user_id = u.user_id AND status NOT IN ('deleted', 'archived', '')) AS equipment_listed
     FROM users u
     ORDER BY u.created_at DESC
 ")->fetch_all(MYSQLI_ASSOC);
@@ -64,6 +67,7 @@ $productList = $conn->query("
     FROM products p
     INNER JOIN categories c ON p.category_id = c.category_id
     INNER JOIN users u ON p.user_id = u.user_id
+    WHERE p.status NOT IN ('deleted', 'archived', '')
     ORDER BY p.quantity ASC
 ")->fetch_all(MYSQLI_ASSOC);
 
@@ -72,6 +76,7 @@ $equipmentList = $conn->query("
     FROM equipment e
     INNER JOIN categories c ON e.category_id = c.category_id
     INNER JOIN users u ON e.user_id = u.user_id
+    WHERE e.status NOT IN ('deleted', 'archived', '')
     ORDER BY e.availability ASC
 ")->fetch_all(MYSQLI_ASSOC);
 ?>
@@ -80,80 +85,39 @@ $equipmentList = $conn->query("
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Executive System Reports — AgriMart Admin</title>
-    <link rel="stylesheet" href="css/style.css">
-    <style>
-        body { margin: 0; background: #f4f0df; color: #162018; }
-        .site-header { background: var(--forest-950) !important; }
-        .admin-wrap { width: min(1300px, 100% - 40px); margin: 0 auto; padding: 120px 0 90px; }
-        .admin-header { margin-bottom: 25px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 20px; }
-        .admin-header h1 { font-family: Georgia, serif; font-size: clamp(30px, 4vw, 42px); margin: 0; color: #122017; }
-        .report-nav { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; }
-        .report-tab { padding: 10px 20px; background: #fff; border: 1px solid #ded6b9; text-decoration: none; color: #122017; font-weight: 600; font-size: 14px; }
-        .report-tab.active, .report-tab:hover { background: var(--forest-900); color: #f5f0df; border-color: var(--forest-900); }
-        .report-panel { background: #fff; border: 1px solid #ded6b9; padding: 35px; margin-bottom: 30px; }
-        .report-panel h2 { font-family: Georgia, serif; font-size: 24px; margin: 0 0 20px; color: #122017; border-bottom: 2px solid #ded6b9; padding-bottom: 12px; }
-        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 35px; }
-        .metric-box { background: #f9f7f0; border: 1px solid #ded6b9; padding: 20px; text-align: center; }
-        .metric-box .label { font-family: monospace; font-size: 11px; text-transform: uppercase; color: #768047; letter-spacing: 1.5px; }
-        .metric-box .val { font-family: Georgia, serif; font-size: 28px; font-weight: 700; color: #122017; margin-top: 6px; }
-        .admin-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; margin-top: 15px; }
-        .admin-table th, .admin-table td { padding: 12px 14px; border-bottom: 1px solid #eee8d5; }
-        .admin-table th { background: #f9f7f0; color: #5e604e; font-family: monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-        .badge { display: inline-block; padding: 4px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-        .badge-active, .badge-available, .badge-paid { background: #e0edd5; color: #23581c; }
-        .badge-inactive, .badge-rented, .badge-pending { background: #efe2b7; color: #6e5817; }
-        .badge-sold, .badge-maintenance, .badge-banned { background: #f7dcd6; color: #7e2b1b; }
-        @media print {
-            .site-header, .site-footer, .report-nav, .no-print, .btn { display: none !important; }
-            .admin-wrap { padding: 0; width: 100%; }
-            .report-panel { border: none; padding: 0; }
-            body { background: #fff; color: #000; }
-        }
-    </style>
+    <title>Executive System Reports — AgriMart Admin Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin_modern.css?v=<?= time() ?>">
 </head>
-<body>
+<body class="admin-console">
 
-<header class="site-header">
-<div class="wrap">
-    <a href="admin_dashboard.php" class="logo">
-        <span class="logo-text"><b>AgriMart Admin</b><span>System Management Console</span></span>
-    </a>
-    <nav class="main-nav">
-        <a href="admin_dashboard.php">Dashboard</a>
-        <a href="admin_users.php">Users</a>
-        <a href="admin_sellers.php">Sellers</a>
-        <a href="admin_listings.php">Listings</a>
-        <a href="admin_rentals.php">Rentals</a>
-        <a href="admin_sales.php">Sales</a>
-        <a href="admin_moderation.php">Reports & Moderation</a>
-        <a href="admin_reports.php" class="active">Reports</a>
-    </nav>
-    <div class="header-actions">
-        <span style="color:#fff; font-size:14px; margin-right:10px;">Admin: <strong><?= htmlspecialchars($firstName) ?></strong></span>
-        <a href="logout.php" class="btn btn-light">Logout</a>
-    </div>
-</div>
-</header>
+<?php 
+$activeNav = 'payments';
+include __DIR__ . '/admin_sidebar.php'; 
+?>
 
-<main class="admin-wrap">
-    <div class="admin-header">
+<main class="admin-main">
+    <header class="admin-topbar">
         <div>
-            <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Analytical Insights & Exports</span>
-            <h1>System Performance Reports</h1>
+            <div class="topbar-subline">Analytics, settlements & executive reporting</div>
+            <h1 class="topbar-heading">Payments & <i>reports.</i></h1>
         </div>
-        <div class="no-print">
-            <button onclick="window.print()" class="btn btn-solid" style="margin-right:8px;">🖨️ Print / Save as PDF</button>
-            <a href="admin_dashboard.php" class="btn btn-light">← Dashboard</a>
+        <div class="topbar-actions">
+            <button onclick="window.print()" class="btn-review-action">🖨️ Print Report</button>
+            <a href="admin_dashboard.php" class="btn-review-action" style="background:#fff; color:#18241d; border:1px solid #dcd7cb;">Back to Overview</a>
         </div>
-    </div>
+    </header>
 
-    <!-- Report Tabs -->
-    <div class="report-nav no-print">
-        <a href="admin_reports.php?type=sales" class="report-tab <?= $reportType === 'sales' ? 'active' : '' ?>">1. Sales & Revenue Report</a>
-        <a href="admin_reports.php?type=users" class="report-tab <?= $reportType === 'users' ? 'active' : '' ?>">2. User Activity Report</a>
-        <a href="admin_reports.php?type=rentals" class="report-tab <?= $reportType === 'rentals' ? 'active' : '' ?>">3. Rental Performance Report</a>
-        <a href="admin_reports.php?type=inventory" class="report-tab <?= $reportType === 'inventory' ? 'active' : '' ?>">4. Inventory & Fleet Report</a>
+    <!-- Report Filter Pills -->
+    <div class="filter-pills-row no-print">
+        <a href="admin_reports.php?type=sales" class="filter-pill <?= $reportType === 'sales' ? 'active' : '' ?>">1. Sales & Revenue</a>
+        <a href="admin_reports.php?type=users" class="filter-pill <?= $reportType === 'users' ? 'active' : '' ?>">2. User Activity</a>
+        <a href="admin_reports.php?type=rentals" class="filter-pill <?= $reportType === 'rentals' ? 'active' : '' ?>">3. Rental Performance</a>
+        <a href="admin_reports.php?type=inventory" class="filter-pill <?= $reportType === 'inventory' ? 'active' : '' ?>">4. Inventory & Fleet</a>
     </div>
 
     <?php if ($reportType === 'sales'): ?>
@@ -399,15 +363,5 @@ $equipmentList = $conn->query("
         </div>
     <?php endif; ?>
 </main>
-
-<footer class="site-footer">
-<div class="wrap">
-    <div class="footer-bottom">
-        <span>© 2026 AgriMart Administration. All rights reserved.</span>
-        <span>Digital Market Platform on Agricultural Products</span>
-    </div>
-</div>
-</footer>
-
 </body>
 </html>

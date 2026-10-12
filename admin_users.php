@@ -138,47 +138,34 @@ $stmt->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Users & Verification — AgriMart Admin</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/admin.css">
+    <title>Manage Users & Verification — AgriMart Admin Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="css/admin_modern.css?v=<?= time() ?>">
 </head>
-<body class="admin-body">
+<body class="admin-console">
 
-<header class="site-header admin-header-nav">
-<div class="wrap">
-    <a href="admin_dashboard.php" class="logo">
-        <span class="logo-text"><b>AgriMart Admin</b><span>System Management Console</span></span>
-    </a>
-    <nav class="main-nav">
-        <a href="admin_dashboard.php">Dashboard</a>
-        <a href="admin_users.php" class="active">Users</a>
-        <a href="admin_sellers.php">Sellers</a>
-        <a href="admin_listings.php">Listings</a>
-        <a href="admin_rentals.php">Rentals</a>
-        <a href="admin_sales.php">Sales</a>
-        <a href="admin_moderation.php">Reports & Moderation</a>
-        <a href="admin_reports.php">Reports</a>
-    </nav>
-    <div class="header-actions">
-        <span style="color:#fff; font-size:14px; margin-right:10px;">Admin: <strong><?= htmlspecialchars($firstName) ?></strong></span>
-        <a href="logout.php" class="btn btn-light">Logout</a>
-    </div>
-</div>
-</header>
+<?php 
+$activeNav = 'users';
+include __DIR__ . '/admin_sidebar.php'; 
+?>
 
-<main class="admin-wrap">
-    <div class="admin-page-head">
+<main class="admin-main">
+    <header class="admin-topbar">
         <div>
-            <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px;">Account Administration & KYC</span>
-            <h1>Manage Users & Identity Verification</h1>
+            <div class="topbar-subline">Account administration & KYC verification</div>
+            <h1 class="topbar-heading">Registered <i>users.</i></h1>
         </div>
-        <div>
-            <button type="button" class="btn btn-solid" onclick="document.getElementById('createAdminModal').style.display='flex'" style="margin-right:8px;">
+        <div class="topbar-actions">
+            <button type="button" class="btn-review-action" onclick="document.getElementById('createAdminModal').style.display='flex'">
                 + Create New Admin
             </button>
-            <a href="admin_dashboard.php" class="btn btn-light">← Dashboard</a>
+            <a href="admin_dashboard.php" class="btn-review-action" style="background:#fff; color:#18241d; border:1px solid #dcd7cb;">Back to Overview</a>
         </div>
-    </div>
+    </header>
 
     <?php if (!empty($message)): ?>
         <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:15px; margin-bottom:20px; font-weight:500;">
@@ -358,15 +345,6 @@ $stmt->close();
         </form>
     </div>
 </div>
-
-<footer class="site-footer">
-<div class="wrap">
-    <div class="footer-bottom">
-        <span>© 2026 AgriMart Administration. All rights reserved.</span>
-        <span>Digital Market Platform on Agricultural Products</span>
-    </div>
-</div>
-</footer>
-
+</main>
 </body>
 </html>

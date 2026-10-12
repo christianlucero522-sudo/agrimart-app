@@ -1522,7 +1522,16 @@ $isOwner =
                                         </div>
                                         <div>
                                             <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:5px; color:#596054;">Your Account / Mobile # *</label>
-                                            <input type="text" name="buyer_account_number" placeholder="e.g. 0917-123-4567" style="width:100%; padding:8px; border:1px solid #d8d0b7; background:#fff;">
+                                            <input 
+                                                type="tel" 
+                                                name="buyer_account_number" 
+                                                inputmode="numeric" 
+                                                maxlength="16" 
+                                                placeholder="e.g. 09171234567" 
+                                                style="width:100%; padding:8px; border:1px solid #d8d0b7; background:#fff;"
+                                                oninput="this.value = this.value.replace(/[^0-9\-]/g, '')"
+                                                onkeypress="return (event.charCode >= 48 && event.charCode <= 57) || event.charCode === 45 || event.keyCode === 8"
+                                            >
                                         </div>
                                     </div>
 
