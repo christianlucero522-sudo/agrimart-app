@@ -118,6 +118,8 @@ if (!$equipment) {
     exit;
 }
 
+$isOwner = ($isLoggedIn && $userId > 0 && (int)$equipment['owner_id'] === $userId);
+
 $isNearestCity = !empty($userCity) && (stripos($equipment['location_city'], $userCity) !== false || stripos($userCity, $equipment['location_city']) !== false);
 $isNearbyProv = !empty($userProvince) && (stripos($equipment['location_province'], $userProvince) !== false);
 
@@ -1400,6 +1402,32 @@ $isOwner =
                     </p>
 
 
+                <?php elseif ($isOwner): ?>
+
+                    <div style="margin-bottom:15px;">
+                        <button
+                            type="button"
+                            class="btn btn-solid rent-btn"
+                            disabled
+                            style="background:#8c8874; border-color:#8c8874; color:#fff; cursor:not-allowed; opacity:0.85; width:100%;"
+                            title="You are the owner of this equipment"
+                        >
+                            🚫 Your Own Machinery Listing
+                        </button>
+                    </div>
+
+                    <a
+                        href="edit_equipment.php?id=<?= (int)$equipment['equipment_id'] ?>"
+                        class="btn btn-outline-dark"
+                        style="width:100%; text-align:center; padding:12px; box-sizing:border-box; text-decoration:none; display:block; margin-bottom:12px;"
+                    >
+                        ✏️ Edit Your Equipment Listing
+                    </a>
+
+                    <p class="rent-message">
+                        This is your machinery listing. You cannot place a rental booking request on your own equipment.
+                    </p>
+
                 <?php else: ?>
 
                     <?php if (isset($_SESSION['booking_error'])): ?>
@@ -1686,14 +1714,16 @@ $isOwner =
                 <?php endif; ?>
 
                 <!-- SECONDARY ACTIONS (RATE & REVIEW + REPORT) -->
-                <div style="display:flex; gap:10px; margin-top:20px; flex-wrap:wrap;">
-                    <a href="add_review.php?equipment_id=<?= (int)$equipment['equipment_id'] ?>" class="btn btn-outline-dark" style="padding:10px 18px; font-size:11px; text-decoration:none;">
-                        ⭐ Rate & Review
-                    </a>
-                    <button type="button" class="btn btn-outline-dark" onclick="openReportModal()" style="padding:10px 18px; font-size:11px; color:#8c2e1b; border-color:#d9a99f; cursor:pointer;">
-                        🚩 Report Machinery
-                    </button>
-                </div>
+                <?php if (!$isOwner): ?>
+                    <div style="display:flex; gap:10px; margin-top:20px; flex-wrap:wrap;">
+                        <a href="add_review.php?equipment_id=<?= (int)$equipment['equipment_id'] ?>" class="btn btn-outline-dark" style="padding:10px 18px; font-size:11px; text-decoration:none;">
+                            ⭐ Rate & Review
+                        </a>
+                        <button type="button" class="btn btn-outline-dark" onclick="openReportModal()" style="padding:10px 18px; font-size:11px; color:#8c2e1b; border-color:#d9a99f; cursor:pointer;">
+                            🚩 Report Machinery
+                        </button>
+                    </div>
+                <?php endif; ?>
 
             </div>
 

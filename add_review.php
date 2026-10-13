@@ -39,15 +39,23 @@ if ($orderId > 0) {
         $returnUrl = "booking_details.php?id=$bookingId&reviewed=1";
     }
 } elseif ($productId > 0) {
-    $pRes = $conn->query("SELECT product_name FROM products WHERE product_id = $productId LIMIT 1");
+    $pRes = $conn->query("SELECT product_name, user_id FROM products WHERE product_id = $productId LIMIT 1");
     if ($pRow = $pRes->fetch_assoc()) {
+        if ((int)$pRow['user_id'] === $userId) {
+            header("Location: product_details.php?id=$productId");
+            exit;
+        }
         $targetTitle = "Review Product: " . $pRow['product_name'];
         $targetType = 'product';
         $returnUrl = "product_details.php?id=$productId&reviewed=1";
     }
 } elseif ($equipmentId > 0) {
-    $eRes = $conn->query("SELECT equipment_name FROM equipment WHERE equipment_id = $equipmentId LIMIT 1");
+    $eRes = $conn->query("SELECT equipment_name, user_id FROM equipment WHERE equipment_id = $equipmentId LIMIT 1");
     if ($eRow = $eRes->fetch_assoc()) {
+        if ((int)$eRow['user_id'] === $userId) {
+            header("Location: equipment_details.php?id=$equipmentId");
+            exit;
+        }
         $targetTitle = "Review Equipment: " . $eRow['equipment_name'];
         $targetType = 'equipment';
         $returnUrl = "equipment_details.php?id=$equipmentId&reviewed=1";

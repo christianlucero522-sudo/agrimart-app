@@ -78,6 +78,9 @@ try {
     $totalAmount = 0.0;
 
     while ($row = $cartResult->fetch_assoc()) {
+        if ((int)$row['seller_id'] === $userId) {
+            throw new Exception("You cannot purchase your own product ('" . $row['product_name'] . "'). Please remove it from your cart.");
+        }
         if ((int)$row['cart_quantity'] > (int)$row['stock_quantity']) {
             throw new Exception("Product '" . $row['product_name'] . "' only has " . $row['stock_quantity'] . " in stock.");
         }

@@ -46,7 +46,7 @@ if ($quantity <= 0) {
 }
 
 // Check Product
-$productSql = "SELECT product_id, product_name, price, quantity, status FROM products WHERE product_id = ? AND status = 'active' LIMIT 1";
+$productSql = "SELECT product_id, user_id AS seller_id, product_name, price, quantity, status FROM products WHERE product_id = ? AND status = 'active' LIMIT 1";
 $productStmt = $conn->prepare($productSql);
 $productStmt->bind_param('i', $productId);
 $productStmt->execute();
@@ -60,6 +60,17 @@ if (!$product) {
         exit;
     }
     header('Location: products.php');
+    exit;
+}
+
+// Cannot buy or add own product to cart
+if ((int)$product['seller_id'] === $userId) {
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'You cannot purchase or add your own product to your cart.']);
+        exit;
+    }
+    header("Location: product_details.php?id=$productId&error=owner");
     exit;
 }
 

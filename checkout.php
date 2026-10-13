@@ -162,6 +162,7 @@ $cartSql = "
 
     WHERE ca.user_id = ?
       AND p.status = 'active'
+      AND p.user_id != ca.user_id
 
     ORDER BY ci.cart_item_id DESC
 ";

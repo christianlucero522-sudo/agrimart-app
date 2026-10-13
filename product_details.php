@@ -102,6 +102,9 @@ if (!$product) {
     exit;
 }
 
+$userId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+$isOwner = ($isLoggedIn && $userId > 0 && (int)$product['seller_id'] === $userId);
+
 // Fetch Reviews for this product
 $reviewsSql = "
     SELECT r.review_id, r.rating, r.review_text, r.created_at, u.full_name AS reviewer_name
@@ -757,6 +760,13 @@ function getProductImage($imageUrl) {
 
 
             <!-- SUCCESS / REVIEWED MESSAGE -->
+            <?php if (isset($_GET['error']) && $_GET['error'] === 'owner'): ?>
+                <div style="background:#fae6df; border:1px solid #efb7aa; color:#a54129; padding:14px 18px; margin-bottom:20px; border-radius:3px; font-weight:600; font-size:13.5px; display:flex; align-items:center; gap:8px;">
+                    <span>⚠️</span>
+                    <span>You cannot buy or add your own product to your shopping cart.</span>
+                </div>
+            <?php endif; ?>
+
             <?php if (isset($_GET['reviewed']) && $_GET['reviewed'] === '1'): ?>
                 <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:14px 18px; margin-bottom:20px; border-radius:2px; font-weight:500;">
                     ✓ Thank you! Your review and rating have been posted.
@@ -912,7 +922,29 @@ function getProductImage($imageUrl) {
                 </a>
 
                 <!-- ADD TO CART -->
-                <?php if ($isLoggedIn): ?>
+                <?php if ($isLoggedIn && $isOwner): ?>
+
+                    <!-- OWNER VIEW: Cannot buy own product -->
+                    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                        <button
+                            type="button"
+                            class="btn btn-solid"
+                            disabled
+                            style="background:#8c8874; border-color:#8c8874; color:#fff; cursor:not-allowed; opacity:0.85;"
+                            title="You are the seller of this product"
+                        >
+                            🚫 Your Own Listing
+                        </button>
+                        <a
+                            href="edit_product.php?id=<?= (int)$product['product_id'] ?>"
+                            class="btn btn-outline-dark"
+                            style="text-decoration:none;"
+                        >
+                            ✏️ Edit Your Product
+                        </a>
+                    </div>
+
+                <?php elseif ($isLoggedIn): ?>
 
                     <?php if ($pStock > 0): ?>
 
@@ -982,12 +1014,14 @@ function getProductImage($imageUrl) {
 
                 <!-- SECONDARY ACTIONS -->
                 <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                    <a href="add_review.php?product_id=<?= (int)$product['product_id'] ?>" class="btn btn-outline-dark" style="padding:10px 18px; font-size:11px; text-decoration:none;">
-                        ⭐ Rate & Review
-                    </a>
-                    <button type="button" class="btn btn-outline-dark" onclick="openReportModal()" style="padding:10px 18px; font-size:11px; color:#8c2e1b; border-color:#d9a99f; cursor:pointer;">
-                        🚩 Report Listing
-                    </button>
+                    <?php if (!$isOwner): ?>
+                        <a href="add_review.php?product_id=<?= (int)$product['product_id'] ?>" class="btn btn-outline-dark" style="padding:10px 18px; font-size:11px; text-decoration:none;">
+                            ⭐ Rate & Review
+                        </a>
+                        <button type="button" class="btn btn-outline-dark" onclick="openReportModal()" style="padding:10px 18px; font-size:11px; color:#8c2e1b; border-color:#d9a99f; cursor:pointer;">
+                            🚩 Report Listing
+                        </button>
+                    <?php endif; ?>
                 </div>
 
             </div>
