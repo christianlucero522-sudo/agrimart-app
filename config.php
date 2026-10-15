@@ -159,4 +159,50 @@ if (!$connected) {
 
 $conn->set_charset("utf8mb4");
 
+// Auto-migration safeguard: ensure all required columns exist across tables
+static $schemaChecked = false;
+if (!$schemaChecked) {
+    $schemaChecked = true;
+
+    // Check products columns
+    $pCols = [];
+    $pRes = @$conn->query("SHOW COLUMNS FROM products");
+    if ($pRes) {
+        while ($r = $pRes->fetch_assoc()) { $pCols[] = $r['Field']; }
+        if (!in_array('location_city', $pCols)) {
+            @$conn->query("ALTER TABLE products ADD COLUMN location_city VARCHAR(100) NULL DEFAULT NULL");
+        }
+        if (!in_array('location_province', $pCols)) {
+            @$conn->query("ALTER TABLE products ADD COLUMN location_province VARCHAR(100) NULL DEFAULT NULL");
+        }
+    }
+
+    // Check equipment columns
+    $eCols = [];
+    $eRes = @$conn->query("SHOW COLUMNS FROM equipment");
+    if ($eRes) {
+        while ($r = $eRes->fetch_assoc()) { $eCols[] = $r['Field']; }
+        if (!in_array('location_city', $eCols)) {
+            @$conn->query("ALTER TABLE equipment ADD COLUMN location_city VARCHAR(100) NULL DEFAULT NULL");
+        }
+        if (!in_array('location_province', $eCols)) {
+            @$conn->query("ALTER TABLE equipment ADD COLUMN location_province VARCHAR(100) NULL DEFAULT NULL");
+        }
+    }
+
+    // Check orders columns
+    $oCols = [];
+    $oRes = @$conn->query("SHOW COLUMNS FROM orders");
+    if ($oRes) {
+        while ($r = $oRes->fetch_assoc()) { $oCols[] = $r['Field']; }
+        if (!in_array('cancellation_reason', $oCols)) {
+            @$conn->query("ALTER TABLE orders ADD COLUMN cancellation_reason TEXT NULL DEFAULT NULL");
+        }
+        if (!in_array('cancelled_by', $oCols)) {
+            @$conn->query("ALTER TABLE orders ADD COLUMN cancelled_by INT NULL DEFAULT NULL");
+        }
+    }
+}
+
 require_once __DIR__ . '/sms_helper.php';
+
