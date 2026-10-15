@@ -349,8 +349,8 @@ function sendBookingCreatedEmails($bookingId, $conn) {
 /**
  * Send Gmail notification when order status changes
  */
-function sendOrderStatusEmail($orderId, $newStatus, $conn) {
-    $stmt = $conn->prepare("SELECT o.order_id, o.total_amount, u.full_name, u.email FROM orders o INNER JOIN users u ON o.buyer_id = u.user_id WHERE o.order_id = ? LIMIT 1");
+function sendOrderStatusEmail($orderId, $newStatus, $conn, $cancellationReason = '') {
+    $stmt = $conn->prepare("SELECT o.order_id, o.total_amount, o.cancellation_reason, o.cancelled_by, u.full_name, u.email FROM orders o INNER JOIN users u ON o.buyer_id = u.user_id WHERE o.order_id = ? LIMIT 1");
     $stmt->bind_param('i', $orderId);
     $stmt->execute();
     $order = $stmt->get_result()->fetch_assoc();
@@ -358,10 +358,24 @@ function sendOrderStatusEmail($orderId, $newStatus, $conn) {
 
     if (!$order) return;
 
+    $cancellationHtml = '';
+    if ($newStatus === 'cancelled') {
+        $reasonText = !empty($cancellationReason) ? $cancellationReason : ($order['cancellation_reason'] ?? 'Order cancelled by seller');
+        $cancelledBy = ucfirst($order['cancelled_by'] ?? 'Seller');
+        $cancellationHtml = '
+            <div style="background:#fae6df; border:1px solid #efb7aa; padding:15px; margin:15px 0; border-radius:4px; color:#7e2b1b;">
+                <div style="font-weight:bold; font-size:14px; margin-bottom:6px;">⚠️ Reason for Cancellation (' . $cancelledBy . '):</div>
+                <div style="font-size:13.5px; line-height:1.4; color:#333;">' . nl2br(htmlspecialchars($reasonText)) . '</div>
+                <div style="font-size:12px; margin-top:8px; color:#9c3822;">Product items have been restored to inventory, and any paid funds will be refunded.</div>
+            </div>
+        ';
+    }
+
     $body = '
         <p>Hello <strong>' . htmlspecialchars($order['full_name']) . '</strong>,</p>
-        <p>Your order <strong>#' . (int)$order['order_id'] . '</strong> has been updated to <strong style="text-transform:uppercase; color:#768047;">' . htmlspecialchars($newStatus) . '</strong> by the seller.</p>
-        <p>Total amount: ₱' . number_format((float)$order['total_amount'], 2) . '</p>
+        <p>Your order <strong>#' . (int)$order['order_id'] . '</strong> has been updated to <strong style="text-transform:uppercase; color:' . ($newStatus === 'cancelled' ? '#a54129' : '#768047') . ';">' . htmlspecialchars($newStatus) . '</strong> by the seller.</p>
+        ' . $cancellationHtml . '
+        <p>Order Total: <strong>₱' . number_format((float)$order['total_amount'], 2) . '</strong></p>
     ';
 
     sendAgriMartEmail(
@@ -370,7 +384,7 @@ function sendOrderStatusEmail($orderId, $newStatus, $conn) {
         "Order #" . $order['order_id'] . " Status Update: " . ucfirst($newStatus) . " — AgriMart",
         "Order Update: " . ucfirst($newStatus),
         $body,
-        "http://localhost/AgriMart/agrimart-frontend/assets/order_details.php?id=" . $order['order_id'],
+        getAgriMartBaseUrl() . "order_details.php?id=" . $order['order_id'],
         "Track Order"
     );
 }

@@ -13,11 +13,13 @@ $parts = explode(' ', trim($fullName));
 $firstName = $parts[0] ?? 'Seller';
 
 $message = '';
+$errorMessage = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim($_POST['action'] ?? '');
     $orderId = (int)($_POST['order_id'] ?? 0);
     $newStatus = trim($_POST['new_status'] ?? '');
+    $cancellationReason = trim($_POST['cancellation_reason'] ?? '');
 
     $allowedStatuses = ['pending', 'confirmed', 'processing', 'completed', 'cancelled'];
 
@@ -28,35 +30,94 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $chk->execute();
         $isMyOrder = $chk->get_result()->num_rows > 0;
         $chk->close();
+
         if ($isMyOrder) {
-            $stmt = $conn->prepare("UPDATE orders SET order_status = ? WHERE order_id = ?");
-            $stmt->bind_param('si', $newStatus, $orderId);
-            $stmt->execute();
-            $stmt->close();
+            if ($newStatus === 'cancelled') {
+                if ($cancellationReason === '') {
+                    $errorMessage = "Cancellation failed: You must provide a reason for cancelling this order.";
+                } else {
+                    $conn->begin_transaction();
+                    try {
+                        // 1. Restore product inventory for all items in this order
+                        $itemSql = "SELECT product_id, quantity FROM order_items WHERE order_id = ?";
+                        $iStmt = $conn->prepare($itemSql);
+                        $iStmt->bind_param('i', $orderId);
+                        $iStmt->execute();
+                        $itemsRes = $iStmt->get_result();
+                        while ($it = $itemsRes->fetch_assoc()) {
+                            $restSql = "UPDATE products SET quantity = quantity + ?, status = 'active' WHERE product_id = ?";
+                            $rStmt = $conn->prepare($restSql);
+                            $rStmt->bind_param('ii', $it['quantity'], $it['product_id']);
+                            $rStmt->execute();
+                            $rStmt->close();
+                        }
+                        $iStmt->close();
 
-            if ($newStatus === 'completed') {
-                $conn->query("UPDATE payments SET payment_status = 'paid' WHERE order_id = $orderId");
+                        // 2. Update order status, cancellation reason and cancelled_by (total_amount remains untouched)
+                        $stmt = $conn->prepare("UPDATE orders SET order_status = 'cancelled', cancellation_reason = ?, cancelled_by = 'seller' WHERE order_id = ?");
+                        $stmt->bind_param('si', $cancellationReason, $orderId);
+                        $stmt->execute();
+                        $stmt->close();
+
+                        // 3. Mark payment as refunded if payment exists
+                        $conn->query("UPDATE payments SET payment_status = 'refunded' WHERE order_id = $orderId");
+
+                        // 4. Notify buyer with the cancellation reason
+                        $bStmt = $conn->prepare("SELECT buyer_id FROM orders WHERE order_id = ? LIMIT 1");
+                        $bStmt->bind_param('i', $orderId);
+                        $bStmt->execute();
+                        $buyerId = (int)($bStmt->get_result()->fetch_assoc()['buyer_id'] ?? 0);
+                        $bStmt->close();
+
+                        $notifTitle = "Order #$orderId Cancelled by Seller";
+                        $notifMsg = "Your order #$orderId has been cancelled by the seller. Reason: " . $cancellationReason;
+                        $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'order', ?)");
+                        $nStmt->bind_param('issi', $buyerId, $notifTitle, $notifMsg, $orderId);
+                        $nStmt->execute();
+                        $nStmt->close();
+
+                        $conn->commit();
+
+                        // 5. Send Gmail notification to buyer with cancellation reason
+                        require_once 'mailer.php';
+                        @sendOrderStatusEmail($orderId, 'cancelled', $conn, $cancellationReason);
+
+                        $message = "Order #$orderId has been cancelled. Product quantities have been restored to your inventory, and the buyer has been notified.";
+                    } catch (Exception $e) {
+                        $conn->rollback();
+                        $errorMessage = "Unable to cancel order: " . $e->getMessage();
+                    }
+                }
+            } else {
+                $stmt = $conn->prepare("UPDATE orders SET order_status = ? WHERE order_id = ?");
+                $stmt->bind_param('si', $newStatus, $orderId);
+                $stmt->execute();
+                $stmt->close();
+
+                if ($newStatus === 'completed') {
+                    $conn->query("UPDATE payments SET payment_status = 'paid' WHERE order_id = $orderId");
+                }
+
+                // Notify buyer
+                $bStmt = $conn->prepare("SELECT buyer_id FROM orders WHERE order_id = ? LIMIT 1");
+                $bStmt->bind_param('i', $orderId);
+                $bStmt->execute();
+                $buyerId = (int)($bStmt->get_result()->fetch_assoc()['buyer_id'] ?? 0);
+                $bStmt->close();
+
+                $notifTitle = "Order #$orderId Status: " . ucfirst($newStatus);
+                $notifMsg = "Your order #$orderId has been marked as '$newStatus' by the farmer/seller.";
+                $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'order', ?)");
+                $nStmt->bind_param('issi', $buyerId, $notifTitle, $notifMsg, $orderId);
+                $nStmt->execute();
+                $nStmt->close();
+
+                // Send Gmail notification to buyer
+                require_once 'mailer.php';
+                @sendOrderStatusEmail($orderId, $newStatus, $conn);
+
+                $message = "Order #$orderId has been updated to " . ucfirst($newStatus) . ".";
             }
-
-            // Notify buyer
-            $bStmt = $conn->prepare("SELECT buyer_id FROM orders WHERE order_id = ? LIMIT 1");
-            $bStmt->bind_param('i', $orderId);
-            $bStmt->execute();
-            $buyerId = (int)($bStmt->get_result()->fetch_assoc()['buyer_id'] ?? 0);
-            $bStmt->close();
-
-            $notifTitle = "Order #$orderId Status: " . ucfirst($newStatus);
-            $notifMsg = "Your order #$orderId has been marked as '$newStatus' by the farmer/seller.";
-            $nStmt = $conn->prepare("INSERT INTO notifications (user_id, title, message, notification_type, related_id) VALUES (?, ?, ?, 'order', ?)");
-            $nStmt->bind_param('issi', $buyerId, $notifTitle, $notifMsg, $orderId);
-            $nStmt->execute();
-            $nStmt->close();
-
-            // Send Gmail notification to buyer
-            require_once 'mailer.php';
-            @sendOrderStatusEmail($orderId, $newStatus, $conn);
-
-            $message = "Order #$orderId has been updated to " . ucfirst($newStatus) . ".";
         }
     }
 }
@@ -69,6 +130,8 @@ $sql = "
         o.total_amount,
         o.shipping_address,
         o.order_status,
+        o.cancellation_reason,
+        o.cancelled_by,
         o.created_at,
         u.full_name AS buyer_name,
         u.phone AS buyer_phone,
@@ -179,6 +242,12 @@ $stmt->close();
         </div>
     <?php endif; ?>
 
+    <?php if (!empty($errorMessage)): ?>
+        <div style="background:#fae6df; border:1px solid #efb7aa; color:#7e2b1b; padding:15px; margin-bottom:25px; font-weight:600;">
+            ⚠️ <?= htmlspecialchars($errorMessage) ?>
+        </div>
+    <?php endif; ?>
+
     <div class="filter-bar">
         <a href="seller_orders.php" class="filter-btn <?= empty($statusFilter) ? 'active' : '' ?>">All Sales</a>
         <a href="seller_orders.php?status=pending" class="filter-btn <?= $statusFilter === 'pending' ? 'active' : '' ?>">Pending</a>
@@ -224,14 +293,29 @@ $stmt->close();
                         <div style="font-size:13px; color:#596054; margin-top:8px;">
                             <strong>Delivery Address:</strong> <?= htmlspecialchars($s['shipping_address']) ?>
                         </div>
+
+                        <?php if ($s['order_status'] === 'cancelled'): ?>
+                            <div style="background:#fae6df; border:1px solid #efb7aa; padding:12px 16px; margin-top:12px; border-radius:4px; color:#7e2b1b;">
+                                <div style="font-weight:700; font-size:13px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+                                    <span>✕</span> Order Cancelled by <?= ucfirst($s['cancelled_by'] ?? 'Seller') ?>
+                                </div>
+                                <div style="font-size:13px; line-height:1.4;">
+                                    <strong>Reason:</strong> <?= nl2br(htmlspecialchars($s['cancellation_reason'] ?: 'No explanation provided.')) ?>
+                                </div>
+                                <div style="font-size:11.5px; color:#9c3822; margin-top:5px;">
+                                    ✓ Product inventory quantities have been restored. Order amount record (₱<?= number_format((float)$s['seller_subtotal'], 2) ?>) remains preserved.
+                                </div>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     <div>
                         <a href="order_details.php?id=<?= (int)$s['order_id'] ?>" class="btn btn-dark" style="margin-bottom:10px; display:inline-block;">View Details →</a>
                         
                         <?php if ($s['order_status'] !== 'completed' && $s['order_status'] !== 'cancelled'): ?>
-                            <form action="seller_orders.php" method="POST" class="action-form">
+                            <form action="seller_orders.php" method="POST" class="action-form" onsubmit="return handleSellerStatusSubmit(this);">
                                 <input type="hidden" name="action" value="update_status">
                                 <input type="hidden" name="order_id" value="<?= (int)$s['order_id'] ?>">
+                                <input type="hidden" name="cancellation_reason" value="">
                                 <select name="new_status" class="action-select">
                                     <option value="confirmed" <?= $s['order_status'] === 'confirmed' ? 'selected' : '' ?>>Confirm Order</option>
                                     <option value="processing" <?= $s['order_status'] === 'processing' ? 'selected' : '' ?>>Processing / Ship</option>
@@ -247,6 +331,119 @@ $stmt->close();
         <?php endforeach; ?>
     <?php endif; ?>
 </main>
+
+<!-- Cancellation Reason Modal -->
+<div id="cancelModal" style="display:none; position:fixed; inset:0; background:rgba(18,32,23,0.7); z-index:9999; align-items:center; justify-content:center; padding:20px;">
+    <div style="background:#fff; max-width:520px; width:100%; border-radius:6px; box-shadow:0 15px 35px rgba(0,0,0,0.25); overflow:hidden; border:1px solid #ded6b9;">
+        <div style="background:#fae6df; padding:18px 24px; border-bottom:1px solid #efb7aa; display:flex; justify-content:space-between; align-items:center;">
+            <h3 style="margin:0; font-family:Georgia,serif; font-size:18px; color:#7e2b1b;">
+                ⚠️ Cancel Order #<span id="modalOrderId"></span>
+            </h3>
+            <button type="button" onclick="closeCancelModal()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#7e2b1b;">&times;</button>
+        </div>
+        <div style="padding:22px 24px;">
+            <p style="margin:0 0 16px; font-size:13.5px; color:#555; line-height:1.5;">
+                As the seller, you must state a clear reason for cancellation. The product quantities will be returned to your inventory and the customer will receive an alert with your reason.
+            </p>
+            <div style="margin-bottom:15px;">
+                <label style="display:block; font-size:12px; font-weight:700; color:#122017; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">
+                    Select Reason <span style="color:#c53030;">*</span>
+                </label>
+                <select id="modalReasonPreset" onchange="onPresetReasonChange(this)" style="width:100%; padding:10px 12px; border:1px solid #c2bda8; background:#fbfaf6; font-size:13.5px; border-radius:4px;">
+                    <option value="">-- Choose a Reason --</option>
+                    <option value="Out of Stock / Damaged Harvest">Out of Stock / Damaged Harvest</option>
+                    <option value="Unable to Deliver to Buyer Location">Unable to Deliver to Buyer Location</option>
+                    <option value="Buyer Requested Cancellation">Buyer Requested Cancellation</option>
+                    <option value="Direct Payment Proof Not Received / Invalid">Direct Payment Proof Not Received / Invalid</option>
+                    <option value="Pricing / Listing Quantity Discrepancy">Pricing / Listing Quantity Discrepancy</option>
+                    <option value="Other">Other (Specify below)</option>
+                </select>
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="display:block; font-size:12px; font-weight:700; color:#122017; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">
+                    Explanation / Note to Buyer <span style="color:#c53030;">*</span>
+                </label>
+                <textarea id="modalReasonDetails" rows="3" placeholder="Provide full details or reason for cancellation..." style="width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #c2bda8; font-family:inherit; font-size:13px; border-radius:4px; resize:vertical;"></textarea>
+                <div id="modalError" style="color:#c53030; font-size:12px; display:none; margin-top:5px; font-weight:600;"></div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button type="button" onclick="closeCancelModal()" class="btn btn-light" style="padding:9px 18px; font-size:13px;">Keep Order</button>
+                <button type="button" onclick="submitCancellation()" class="btn btn-solid" style="padding:9px 20px; font-size:13px; background:#a54129; border-color:#8e341f; color:#fff;">Confirm Cancellation</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let pendingCancelForm = null;
+
+function handleSellerStatusSubmit(form) {
+    const statusSelect = form.querySelector('select[name="new_status"]');
+    if (statusSelect && statusSelect.value === 'cancelled') {
+        pendingCancelForm = form;
+        const orderId = form.querySelector('input[name="order_id"]').value;
+        document.getElementById('modalOrderId').textContent = orderId;
+        document.getElementById('modalReasonPreset').value = '';
+        document.getElementById('modalReasonDetails').value = '';
+        document.getElementById('modalError').style.display = 'none';
+        const modal = document.getElementById('cancelModal');
+        modal.style.display = 'flex';
+        return false;
+    }
+    return true;
+}
+
+function onPresetReasonChange(sel) {
+    const textarea = document.getElementById('modalReasonDetails');
+    if (sel.value && sel.value !== 'Other') {
+        if (!textarea.value || textarea.value.trim() === '') {
+            textarea.value = sel.value;
+        }
+    }
+}
+
+function closeCancelModal() {
+    document.getElementById('cancelModal').style.display = 'none';
+    pendingCancelForm = null;
+}
+
+function submitCancellation() {
+    const preset = document.getElementById('modalReasonPreset').value.trim();
+    const details = document.getElementById('modalReasonDetails').value.trim();
+    const err = document.getElementById('modalError');
+
+    if (!preset && !details) {
+        err.textContent = 'Please select a reason or enter an explanation.';
+        err.style.display = 'block';
+        return;
+    }
+
+    let fullReason = details;
+    if (preset && preset !== 'Other' && !details.includes(preset)) {
+        fullReason = preset + (details ? ': ' + details : '');
+    } else if (!fullReason) {
+        fullReason = preset;
+    }
+
+    if (!fullReason || fullReason.length < 3) {
+        err.textContent = 'Please provide a meaningful cancellation reason (at least 3 characters).';
+        err.style.display = 'block';
+        return;
+    }
+
+    if (pendingCancelForm) {
+        let reasonInput = pendingCancelForm.querySelector('input[name="cancellation_reason"]');
+        if (!reasonInput) {
+            reasonInput = document.createElement('input');
+            reasonInput.type = 'hidden';
+            reasonInput.name = 'cancellation_reason';
+            pendingCancelForm.appendChild(reasonInput);
+        }
+        reasonInput.value = fullReason;
+        pendingCancelForm.submit();
+    }
+}
+</script>
 
 <footer class="site-footer">
 <div class="wrap">

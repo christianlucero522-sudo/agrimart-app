@@ -20,10 +20,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'])) {
     
     if ($orderId > 0) {
         if (!empty($newStatus)) {
-            $conn->query("UPDATE orders SET order_status = '$newStatus' WHERE order_id = $orderId");
-            // When an order is marked completed, automatically mark payment as paid
-            if ($newStatus === 'completed') {
-                $conn->query("UPDATE payments SET payment_status = 'paid' WHERE order_id = $orderId");
+            if ($newStatus === 'cancelled') {
+                $cReason = trim($_POST['cancellation_reason'] ?? 'Cancelled by Admin');
+                // Restore inventory if cancelled
+                $itemSql = "SELECT product_id, quantity FROM order_items WHERE order_id = ?";
+                $iStmt = $conn->prepare($itemSql);
+                $iStmt->bind_param('i', $orderId);
+                $iStmt->execute();
+                $itemsRes = $iStmt->get_result();
+                while ($it = $itemsRes->fetch_assoc()) {
+                    $restSql = "UPDATE products SET quantity = quantity + ?, status = 'active' WHERE product_id = ?";
+                    $rStmt = $conn->prepare($restSql);
+                    $rStmt->bind_param('ii', $it['quantity'], $it['product_id']);
+                    $rStmt->execute();
+                    $rStmt->close();
+                }
+                $iStmt->close();
+
+                $stmt = $conn->prepare("UPDATE orders SET order_status = 'cancelled', cancellation_reason = ?, cancelled_by = 'admin' WHERE order_id = ?");
+                $stmt->bind_param('si', $cReason, $orderId);
+                $stmt->execute();
+                $stmt->close();
+
+                $conn->query("UPDATE payments SET payment_status = 'refunded' WHERE order_id = $orderId");
+            } else {
+                $conn->query("UPDATE orders SET order_status = '$newStatus' WHERE order_id = $orderId");
+                // When an order is marked completed, automatically mark payment as paid
+                if ($newStatus === 'completed') {
+                    $conn->query("UPDATE payments SET payment_status = 'paid' WHERE order_id = $orderId");
+                }
             }
         }
         if (!empty($newPayStatus)) {
@@ -44,6 +69,8 @@ $sql = "
         o.total_amount,
         o.shipping_address,
         o.order_status,
+        o.cancellation_reason,
+        o.cancelled_by,
         o.created_at,
         u.full_name AS buyer_name,
         u.phone AS buyer_phone,
@@ -166,7 +193,7 @@ include __DIR__ . '/admin_sidebar.php';
                             <td>
                                 <form action="admin_sales.php" method="POST" style="display:inline;">
                                     <input type="hidden" name="order_id" value="<?= (int)$o['order_id'] ?>">
-                                    <select name="order_status" onchange="onOrderStatusChange(this)" style="padding:3px 6px; font-size:12px; <?= $isCompleted ? 'font-weight:600; color:#15803d;' : '' ?>">
+                                    <select name="order_status" onchange="onOrderStatusChange(this)" style="padding:3px 6px; font-size:12px; <?= $isCompleted ? 'font-weight:600; color:#15803d;' : ($o['order_status'] === 'cancelled' ? 'font-weight:600; color:#b91c1c;' : '') ?>">
                                         <option value="pending" <?= $o['order_status'] === 'pending' ? 'selected' : '' ?>>Pending</option>
                                         <option value="confirmed" <?= $o['order_status'] === 'confirmed' ? 'selected' : '' ?>>Confirmed</option>
                                         <option value="processing" <?= $o['order_status'] === 'processing' ? 'selected' : '' ?>>Processing</option>
@@ -174,6 +201,11 @@ include __DIR__ . '/admin_sidebar.php';
                                         <option value="cancelled" <?= $o['order_status'] === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
                                     </select>
                                 </form>
+                                <?php if ($o['order_status'] === 'cancelled'): ?>
+                                    <small style="color:#b91c1c; font-size:11px; display:block; max-width:180px; word-break:break-word; margin-top:4px;" title="<?= htmlspecialchars($o['cancellation_reason'] ?? '') ?>">
+                                        <strong>Cancelled (<?= ucfirst($o['cancelled_by'] ?? 'Seller') ?>):</strong> <?= htmlspecialchars($o['cancellation_reason'] ?: 'No reason entered') ?>
+                                    </small>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <a href="order_details.php?id=<?= (int)$o['order_id'] ?>" target="_blank" class="btn btn-light" style="padding:4px 8px; font-size:11px;">View Receipt</a>
@@ -195,6 +227,21 @@ function onOrderStatusChange(selectEl) {
                 paySelect.value = 'paid';
             }
         }
+    } else if (selectEl.value === 'cancelled') {
+        const reason = prompt('Please enter the reason for cancelling this order (mandatory):');
+        if (!reason || reason.trim() === '') {
+            alert('Cancellation aborted: A cancellation reason is mandatory.');
+            location.reload();
+            return;
+        }
+        let rInput = selectEl.form.querySelector('input[name="cancellation_reason"]');
+        if (!rInput) {
+            rInput = document.createElement('input');
+            rInput.type = 'hidden';
+            rInput.name = 'cancellation_reason';
+            selectEl.form.appendChild(rInput);
+        }
+        rInput.value = reason.trim();
     }
     selectEl.form.submit();
 }
