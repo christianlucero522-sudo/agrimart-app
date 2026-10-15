@@ -73,12 +73,17 @@ $sql = "
         p.retrieval_message,
         p.retrieval_status,
         p.retrieval_requested_at,
+        COALESCE(NULLIF(p.location_city, ''), a.city_municipality, 'Flora') AS location_city,
+        COALESCE(NULLIF(p.location_province, ''), a.province, 'Apayao') AS location_province,
         c.category_name
 
     FROM products p
 
     INNER JOIN categories c
         ON p.category_id = c.category_id
+
+    LEFT JOIN addresses a
+        ON p.user_id = a.user_id
 
     WHERE p.user_id = ?
       AND p.status NOT IN ('deleted', 'archived', '')
@@ -1222,9 +1227,17 @@ function getMyProductImage($imageUrl)
                                         <?= (int) $product['quantity'] ?> <?= htmlspecialchars($product['unit'] ?? '', ENT_QUOTES, 'UTF-8') ?>
                                     </strong>
                                 <?php endif; ?>
-
                             </div>
 
+                            <!-- LOCATION -->
+                            <div class="listing-detail" style="grid-column: 1 / -1;">
+                                <span>
+                                    Farm / Pickup Location
+                                </span>
+                                <strong style="font-size:12.5px; font-weight:600; color:#23581c; display:flex; align-items:center; gap:4px;">
+                                    📍 <?= htmlspecialchars($product['location_city'], ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars($product['location_province'], ENT_QUOTES, 'UTF-8') ?>
+                                </strong>
+                            </div>
 
                         </div>
 

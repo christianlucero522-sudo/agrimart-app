@@ -88,23 +88,35 @@ if ($categoryResult) {
 
 
 /* =========================================================
+   GET USER ADDRESS DEFAULT LOCATION
+========================================================= */
+
+$userCity = '';
+$userProvince = '';
+$addrSql = "SELECT city_municipality, province FROM addresses WHERE user_id = ? ORDER BY address_id DESC LIMIT 1";
+$aStmt = $conn->prepare($addrSql);
+$aStmt->bind_param('i', $userId);
+$aStmt->execute();
+$addrRow = $aStmt->get_result()->fetch_assoc();
+if ($addrRow) {
+    $userCity = $addrRow['city_municipality'] ?? '';
+    $userProvince = $addrRow['province'] ?? '';
+}
+$aStmt->close();
+
+/* =========================================================
    DEFAULT FORM VALUES
 ========================================================= */
 
 $productName = '';
-
 $categoryId = 0;
-
 $description = '';
-
 $price = '';
-
 $quantity = '';
-
 $unit = '';
-
+$locationCity = $userCity;
+$locationProvince = $userProvince;
 $errorMessage = '';
-
 $successMessage = '';
 
 
@@ -114,37 +126,14 @@ $successMessage = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-
-    $productName = trim(
-        $_POST['product_name'] ?? ''
-    );
-
-
-    $categoryId = isset(
-        $_POST['category_id']
-    )
-        ? (int) $_POST['category_id']
-        : 0;
-
-
-    $description = trim(
-        $_POST['description'] ?? ''
-    );
-
-
-    $price = trim(
-        $_POST['price'] ?? ''
-    );
-
-
-    $quantity = trim(
-        $_POST['quantity'] ?? ''
-    );
-
-
-    $unit = trim(
-        $_POST['unit'] ?? ''
-    );
+    $productName = trim($_POST['product_name'] ?? '');
+    $categoryId = isset($_POST['category_id']) ? (int) $_POST['category_id'] : 0;
+    $description = trim($_POST['description'] ?? '');
+    $price = trim($_POST['price'] ?? '');
+    $quantity = trim($_POST['quantity'] ?? '');
+    $unit = trim($_POST['unit'] ?? '');
+    $locationCity = trim($_POST['location_city'] ?? $userCity);
+    $locationProvince = trim($_POST['location_province'] ?? $userProvince);
 
 
     /* =====================================================
@@ -416,9 +405,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 quantity,
                 unit,
                 image_url,
+                location_city,
+                location_province,
                 status
             )
             VALUES (
+                ?,
+                ?,
                 ?,
                 ?,
                 ?,
@@ -431,26 +424,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             )
         ";
 
-
-        $insertStmt =
-            $conn->prepare(
-                $insertSql
-            );
-
+        $insertStmt = $conn->prepare($insertSql);
 
         if (!$insertStmt) {
-
-            die(
-                'Unable to create product listing.'
-            );
-
+            die('Unable to create product listing.');
         }
 
-
         $insertStmt->bind_param(
-
-            'iissdiss',
-
+            'iissdissss',
             $userId,
             $categoryId,
             $productName,
@@ -458,8 +439,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $priceValue,
             $quantityValue,
             $unit,
-            $imagePath
-
+            $imagePath,
+            $locationCity,
+            $locationProvince
         );
 
 
@@ -476,17 +458,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         /* RESET FORM */
 
         $productName = '';
-
         $categoryId = 0;
-
         $description = '';
-
         $price = '';
-
         $quantity = '';
-
         $unit = '';
-
+        $locationCity = $userCity;
+        $locationProvince = $userProvince;
 
         $successMessage =
             'Product listing created successfully.';
@@ -1355,7 +1333,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         required
                     >
 
+                </div>
 
+                <!-- LOCATION CITY / MUNICIPALITY -->
+                <div class="form-group">
+                    <label for="location_city">Farm / Pickup City or Municipality</label>
+                    <input
+                        type="text"
+                        id="location_city"
+                        name="location_city"
+                        class="form-control"
+                        value="<?= htmlspecialchars($locationCity, ENT_QUOTES, 'UTF-8') ?>"
+                        placeholder="e.g. Flora, Urdaneta City"
+                        required
+                    >
+                    <small style="color:#777; font-size:11px; margin-top:2px; display:block;">Used to match nearby buyers looking for fresh crops.</small>
+                </div>
+
+                <!-- LOCATION PROVINCE -->
+                <div class="form-group">
+                    <label for="location_province">Province</label>
+                    <input
+                        type="text"
+                        id="location_province"
+                        name="location_province"
+                        class="form-control"
+                        value="<?= htmlspecialchars($locationProvince, ENT_QUOTES, 'UTF-8') ?>"
+                        placeholder="e.g. Apayao, Pangasinan"
+                        required
+                    >
                 </div>
 
 

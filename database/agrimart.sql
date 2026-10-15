@@ -385,6 +385,8 @@ CREATE TABLE `products` (
   `quantity` int(10) unsigned NOT NULL DEFAULT 0,
   `unit` varchar(50) DEFAULT 'kg',
   `image_url` varchar(255) DEFAULT NULL,
+  `location_city` varchar(100) DEFAULT NULL,
+  `location_province` varchar(100) DEFAULT NULL,
   `status` enum('active','inactive','sold','deleted','archived') NOT NULL DEFAULT 'active',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
