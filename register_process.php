@@ -85,6 +85,31 @@ if ($stmt->execute()) {
     $newUserId = $stmt->insert_id;
     $stmt->close();
 
+    // Replicate new user to Clever Cloud if running locally and Clever Cloud is reachable
+    $dbHost = $conn->host_info ?? '';
+    if (strpos($dbHost, '127.0.0.1') !== false || strpos($dbHost, 'localhost') !== false) {
+        try {
+            $cloudConn = @new mysqli('blpcpqtohlaqhpgy6nte-mysql.services.clever-cloud.com', 'ui0fiyieoo7h6gn8', 'yVyYoZcZjbLv0XlWzhYd', 'blpcpqtohlaqhpgy6nte', 3306);
+            if ($cloudConn && !$cloudConn->connect_error) {
+                $cChk = $cloudConn->prepare("SELECT user_id FROM users WHERE email = ? LIMIT 1");
+                if ($cChk) {
+                    $cChk->bind_param('s', $email);
+                    $cChk->execute();
+                    if ($cChk->get_result()->num_rows === 0) {
+                        $cIns = $cloudConn->prepare("INSERT INTO users (full_name, email, phone, password, role, is_verified, face_verified, status, email_verified, email_verification_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                        if ($cIns) {
+                            $cIns->bind_param('ssssssssis', $fullName, $email, $phone, $hashedPassword, $role, $isVerified, $faceVerified, $status, $emailVerified, $emailVerificationToken);
+                            $cIns->execute();
+                            $cIns->close();
+                        }
+                    }
+                    $cChk->close();
+                }
+                $cloudConn->close();
+            }
+        } catch (\Throwable $t) {}
+    }
+
     // Send email verification link
     @sendVerificationEmail($email, $fullName, $emailVerificationToken);
 

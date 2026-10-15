@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 session_start();
 require_once 'config.php';
 require_once 'mailer.php';
@@ -29,6 +29,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $upStmt->bind_param('si', $token, $uId);
                 $upStmt->execute();
                 $upStmt->close();
+
+                // Cross-sync token to Clever Cloud if local
+                try {
+                    $cloudConn = @new mysqli('blpcpqtohlaqhpgy6nte-mysql.services.clever-cloud.com', 'ui0fiyieoo7h6gn8', 'yVyYoZcZjbLv0XlWzhYd', 'blpcpqtohlaqhpgy6nte', 3306);
+                    if ($cloudConn && !$cloudConn->connect_error) {
+                        $cUp = $cloudConn->prepare("UPDATE users SET email_verification_token = ? WHERE email = ?");
+                        if ($cUp) {
+                            $cUp->bind_param('ss', $token, $email);
+                            $cUp->execute();
+                            $cUp->close();
+                        }
+                        $cloudConn->close();
+                    }
+                } catch (\Throwable $t) {}
 
                 @sendVerificationEmail($email, $user['full_name'], $token);
 

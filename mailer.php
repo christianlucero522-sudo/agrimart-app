@@ -217,7 +217,7 @@ function sendOrderPlacedEmails($orderId, $conn) {
         "Order #" . $order['order_id'] . " Confirmed — AgriMart",
         "Order #" . $order['order_id'] . " Confirmation",
         $buyerBody,
-        "http://localhost/AgriMart/agrimart-frontend/assets/order_details.php?id=" . $order['order_id'],
+        getAgriMartBaseUrl() . "order_details.php?id=" . $order['order_id'],
         "View Order Details"
     );
 
@@ -256,7 +256,7 @@ function sendOrderPlacedEmails($orderId, $conn) {
             "New Order #" . $order['order_id'] . " Received — AgriMart",
             "New Order Received: #" . $order['order_id'],
             $sellerBody,
-            "http://localhost/AgriMart/agrimart-frontend/assets/seller_orders.php",
+            getAgriMartBaseUrl() . "seller_orders.php",
             "Manage Customer Orders"
         );
     }
@@ -341,7 +341,7 @@ function sendBookingCreatedEmails($bookingId, $conn) {
         "Booking #" . $b['booking_id'] . " Submitted — AgriMart",
         "Equipment Booking Confirmation",
         $renterBody,
-        "http://localhost/AgriMart/agrimart-frontend/assets/booking_details.php?id=" . $b['booking_id'],
+        getAgriMartBaseUrl() . "booking_details.php?id=" . $b['booking_id'],
         "View Booking Details"
     );
 }
@@ -426,11 +426,39 @@ function sendVerificationStatusEmail($userId, $status, $conn) {
  * Base URL helper for generating full absolute URLs in emails
  */
 function getAgriMartBaseUrl() {
-    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || ($_SERVER['SERVER_PORT'] ?? 80) == 443) ? 'https://' : 'http://';
+    // 1. Detect Vercel or cloud deployment
+    $isVercel = (getenv('VERCEL') || (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], 'vercel.app') !== false));
+    if ($isVercel) {
+        $host = $_SERVER['HTTP_HOST'] ?? 'agrimart-app.vercel.app';
+        return "https://{$host}/";
+    }
+
+    // 2. Check explicit environment override
+    $configuredUrl = getenv('APP_URL') ?: (getenv('AGRIMART_BASE_URL') ?: '');
+    if (!empty($configuredUrl)) {
+        return rtrim($configuredUrl, '/') . '/';
+    }
+
+    // 3. Dynamic Protocol detection (HTTPS, reverse proxy headers, Cloudflare, AWS, Vercel)
+    $isHttps = (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off')
+        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
+        || (isset($_SERVER['HTTP_X_FORWARDED_SSL']) && strtolower($_SERVER['HTTP_X_FORWARDED_SSL']) === 'on')
+        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+    $protocol = $isHttps ? 'https://' : 'http://';
+
+    // 4. Host detection
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/AgriMart/agrimart-frontend/assets/index.php';
+
+    // 5. Directory path detection (strip /api if routed through Vercel serverless proxy)
+    $script = $_SERVER['SCRIPT_NAME'] ?? '';
     $dir = str_replace('\\', '/', dirname($script));
-    if ($dir === '/' || $dir === '.') $dir = '';
+    if ($dir === '/api' || strpos($dir, '/api/') === 0) {
+        $dir = substr($dir, 4);
+    }
+    if ($dir === '/' || $dir === '.') {
+        $dir = '';
+    }
+
     return rtrim($protocol . $host . $dir, '/') . '/';
 }
 
@@ -439,7 +467,20 @@ function getAgriMartBaseUrl() {
  */
 function sendVerificationEmail($toEmail, $toName, $token) {
     $baseUrl = getAgriMartBaseUrl();
-    $verifyUrl = $baseUrl . "verify_email.php?token=" . urlencode($token);
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $isLocal = ($host === 'localhost' || $host === '127.0.0.1' || strpos($host, 'localhost:') === 0);
+
+    // Primary public verification URL:
+    // If running on localhost, the primary link points to the live Vercel deployment so that
+    // any user or smartphone tapping the link from their Gmail app anywhere in the world will
+    // be able to open the site.
+    if ($isLocal) {
+        $primaryUrl = "https://agrimart-app.vercel.app/verify_email.php?token=" . urlencode($token);
+        $localUrl = $baseUrl . "verify_email.php?token=" . urlencode($token);
+    } else {
+        $primaryUrl = $baseUrl . "verify_email.php?token=" . urlencode($token);
+        $localUrl = '';
+    }
 
     $subject = "Verify Your Email Address — AgriMart";
     $headline = "Welcome to AgriMart, " . $toName . "!";
@@ -448,8 +489,12 @@ function sendVerificationEmail($toEmail, $toName, $token) {
         <p>Thank you for creating an account on <strong>AgriMart</strong>. To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
         <div style="background:#fdfbf7; border:1px solid #ded6b9; padding:16px; margin:20px 0; border-radius:4px;">
             <p style="margin:0 0 8px; font-size:12.5px; color:#596054;">If the button below does not work, copy and paste this verification link into your web browser:</p>
-            <a href="' . htmlspecialchars($verifyUrl) . '" style="font-size:13px; color:#768047; word-break:break-all;">' . htmlspecialchars($verifyUrl) . '</a>
+            <a href="' . htmlspecialchars($primaryUrl) . '" style="font-size:13px; color:#768047; word-break:break-all;">' . htmlspecialchars($primaryUrl) . '</a>
         </div>
+        ' . (!empty($localUrl) ? '
+        <p style="font-size:11.5px; color:#7d7967; margin-top:10px;">
+            Testing locally on this computer? You can also use the local link: <a href="' . htmlspecialchars($localUrl) . '" style="color:#768047;">' . htmlspecialchars($localUrl) . '</a>
+        </p>' : '') . '
         <p style="font-size:12px; color:#7d7967; margin-top:20px;">If you did not register for an AgriMart account, you can safely ignore this email.</p>
     ';
 
@@ -459,7 +504,7 @@ function sendVerificationEmail($toEmail, $toName, $token) {
         $subject,
         $headline,
         $contentHtml,
-        $verifyUrl,
+        $primaryUrl,
         "Verify Email Address"
     );
 }

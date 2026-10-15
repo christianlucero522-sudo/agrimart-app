@@ -6,8 +6,16 @@ $rawUri = $_SERVER['REQUEST_URI'] ?? '/';
 $uri = parse_url($rawUri, PHP_URL_PATH);
 $uri = '/' . ltrim($uri, '/');
 
+// Support requests prefixed with /api/ by stripping the prefix if the root file exists
+if (strpos($uri, '/api/') === 0) {
+    $sub = substr($uri, 4); // strip '/api'
+    if (file_exists(__DIR__ . '/..' . $sub) || file_exists(__DIR__ . '/..' . $sub . '.php')) {
+        $uri = $sub;
+    }
+}
+
 // 1. Root and index path handling
-if ($uri === '/' || $uri === '' || $uri === '/index' || $uri === '/index.php') {
+if ($uri === '/' || $uri === '' || $uri === '/index' || $uri === '/index.php' || $uri === '/api' || $uri === '/api/') {
     require __DIR__ . '/../index.php';
     exit;
 }

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 session_start();
 require_once 'config.php';
 
@@ -8,6 +8,7 @@ $message = '';
 $userEmail = '';
 
 if (!empty($token)) {
+    // 1. Try to verify in the active database connection
     $stmt = $conn->prepare("SELECT user_id, full_name, email FROM users WHERE email_verification_token = ? AND email_verified = 0 LIMIT 1");
     $stmt->bind_param('s', $token);
     $stmt->execute();
@@ -26,7 +27,48 @@ if (!empty($token)) {
             $message = "Database error while verifying email. Please try again.";
         }
         $upStmt->close();
-    } else {
+    }
+
+    // 2. Cross-verify with Clever Cloud if needed (e.g. registered locally, or token in cloud DB)
+    try {
+        $cloudConn = @new mysqli('blpcpqtohlaqhpgy6nte-mysql.services.clever-cloud.com', 'ui0fiyieoo7h6gn8', 'yVyYoZcZjbLv0XlWzhYd', 'blpcpqtohlaqhpgy6nte', 3306);
+        if ($cloudConn && !$cloudConn->connect_error) {
+            if (!$success) {
+                // If not found in primary DB, search Clever Cloud
+                $cStmt = $cloudConn->prepare("SELECT user_id, full_name, email FROM users WHERE email_verification_token = ? AND email_verified = 0 LIMIT 1");
+                if ($cStmt) {
+                    $cStmt->bind_param('s', $token);
+                    $cStmt->execute();
+                    $cUser = $cStmt->get_result()->fetch_assoc();
+                    $cStmt->close();
+
+                    if ($cUser) {
+                        $cUp = $cloudConn->prepare("UPDATE users SET email_verified = 1, email_verification_token = NULL WHERE user_id = ?");
+                        if ($cUp) {
+                            $cUp->bind_param('i', $cUser['user_id']);
+                            if ($cUp->execute()) {
+                                $success = true;
+                                $userEmail = $cUser['email'];
+                                $message = "Congratulations, " . htmlspecialchars($cUser['full_name']) . "! Your email has been verified successfully. You can now log in to AgriMart.";
+                            }
+                            $cUp->close();
+                        }
+                    }
+                }
+            } else if (!empty($userEmail)) {
+                // Already verified in primary DB, sync verification status to Clever Cloud too
+                $cSync = $cloudConn->prepare("UPDATE users SET email_verified = 1, email_verification_token = NULL WHERE email = ?");
+                if ($cSync) {
+                    $cSync->bind_param('s', $userEmail);
+                    $cSync->execute();
+                    $cSync->close();
+                }
+            }
+            $cloudConn->close();
+        }
+    } catch (\Throwable $t) {}
+
+    if (!$success && empty($message)) {
         $message = "This verification link is invalid or has already been used.";
     }
 } else {
