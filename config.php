@@ -202,6 +202,17 @@ if (!$schemaChecked) {
             @$conn->query("ALTER TABLE orders ADD COLUMN cancelled_by INT NULL DEFAULT NULL");
         }
     }
+
+    // Check categories columns
+    $cCols = [];
+    $cRes = @$conn->query("SHOW COLUMNS FROM categories");
+    if ($cRes) {
+        while ($r = $cRes->fetch_assoc()) { $cCols[] = $r['Field']; }
+        if (!in_array('rental_rate_type', $cCols)) {
+            @$conn->query("ALTER TABLE categories ADD COLUMN rental_rate_type ENUM('daily', 'hourly') NOT NULL DEFAULT 'daily' AFTER category_type");
+            @$conn->query("UPDATE categories SET rental_rate_type = 'hourly' WHERE category_type = 'equipment' AND (LOWER(category_name) LIKE '%pump%' OR LOWER(category_name) LIKE '%irrigation%' OR LOWER(category_name) LIKE '%sprayer%')");
+        }
+    }
 }
 
 require_once __DIR__ . '/sms_helper.php';

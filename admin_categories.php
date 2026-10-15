@@ -20,6 +20,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $name = trim($_POST['category_name'] ?? '');
         $type = trim($_POST['category_type'] ?? 'seed');
         $desc = trim($_POST['description'] ?? '');
+        $rateType = trim($_POST['rental_rate_type'] ?? 'daily');
+        if (!in_array($rateType, ['daily', 'hourly'])) {
+            $rateType = 'daily';
+        }
 
         // Map 'product' to 'seed' if submitted
         if ($type === 'product') {
@@ -36,8 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if ($dupStmt->get_result()->fetch_assoc()) {
                 $error = "A category named \"$name\" already exists under this type.";
             } else {
-                $stmt = $conn->prepare("INSERT INTO categories (category_name, category_type, description) VALUES (?, ?, ?)");
-                $stmt->bind_param('sss', $name, $type, $desc);
+                $stmt = $conn->prepare("INSERT INTO categories (category_name, category_type, description, rental_rate_type) VALUES (?, ?, ?, ?)");
+                $stmt->bind_param('ssss', $name, $type, $desc, $rateType);
                 if ($stmt->execute()) {
                     $message = "Category \"$name\" has been successfully created.";
                 } else {
@@ -52,6 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $name = trim($_POST['category_name'] ?? '');
         $type = trim($_POST['category_type'] ?? 'seed');
         $desc = trim($_POST['description'] ?? '');
+        $rateType = trim($_POST['rental_rate_type'] ?? 'daily');
+        if (!in_array($rateType, ['daily', 'hourly'])) {
+            $rateType = 'daily';
+        }
 
         if ($type === 'product') {
             $type = 'seed';
@@ -60,8 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if ($catId <= 0 || $name === '' || !in_array($type, ['seed', 'equipment'])) {
             $error = 'Please provide a valid category name and type.';
         } else {
-            $stmt = $conn->prepare("UPDATE categories SET category_name = ?, category_type = ?, description = ? WHERE category_id = ?");
-            $stmt->bind_param('sssi', $name, $type, $desc, $catId);
+            $stmt = $conn->prepare("UPDATE categories SET category_name = ?, category_type = ?, description = ?, rental_rate_type = ? WHERE category_id = ?");
+            $stmt->bind_param('ssssi', $name, $type, $desc, $rateType, $catId);
             if ($stmt->execute()) {
                 $message = "Category \"$name\" updated successfully.";
             } else {
@@ -567,10 +575,22 @@ foreach ($categories as $cat) {
                         <label for="category_type" class="form-label-modern">
                             Category Type <span class="req">*</span>
                         </label>
-                        <select id="category_type" name="category_type" class="form-select-modern" required>
+                        <select id="category_type" name="category_type" class="form-select-modern" required onchange="toggleAddRateType(this.value)">
                             <option value="seed">🌾 Produce / Seed / Crop</option>
                             <option value="equipment">🚜 Machinery / Equipment / Tool</option>
                         </select>
+                    </div>
+
+                    <!-- Rental Rate Basis (Only for Equipment) -->
+                    <div class="form-group-modern" id="add_rate_type_group" style="display:none; grid-column: span 2;">
+                        <label for="rental_rate_type" class="form-label-modern">
+                            Rental Rate Basis (Machinery Pricing Unit) <span class="req">*</span>
+                        </label>
+                        <select id="rental_rate_type" name="rental_rate_type" class="form-select-modern">
+                            <option value="daily">📅 Per Day (Fixed Daily Rental — e.g. Tractors, Harvesters, Tillers)</option>
+                            <option value="hourly">⏱️ Per Hour (Fixed Hourly Rental — e.g. Irrigation Pumps, Sprayers, Cutters)</option>
+                        </select>
+                        <small style="color:#71717a; font-size:12px; margin-top:2px;">🔒 <strong>Enforced &amp; Locked:</strong> Equipment listed under this category will strictly use this rental rate unit; owners cannot switch it.</small>
                     </div>
                 </div>
 
@@ -686,6 +706,9 @@ foreach ($categories as $cat) {
                                             <span class="type-badge-equip">
                                                 🚜 Machinery / Tool
                                             </span>
+                                            <span style="display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #fdfaf2; color: #5c4d18; border: 1px solid #d8cba1;" title="Fixed pricing basis for equipment in this category">
+                                                🔒 <?= ($c['rental_rate_type'] ?? 'daily') === 'hourly' ? 'Per Hour' : 'Per Day' ?>
+                                            </span>
                                         <?php endif; ?>
                                     </td>
                                     <td>
@@ -711,7 +734,7 @@ foreach ($categories as $cat) {
                                             <button 
                                                 type="button" 
                                                 class="btn-edit-action"
-                                                onclick="openEditModal(<?= (int)$c['category_id'] ?>, '<?= htmlspecialchars(addslashes($c['category_name'])) ?>', '<?= htmlspecialchars($c['category_type']) ?>', '<?= htmlspecialchars(addslashes($c['description'] ?? '')) ?>')"
+                                                onclick="openEditModal(<?= (int)$c['category_id'] ?>, '<?= htmlspecialchars(addslashes($c['category_name'])) ?>', '<?= htmlspecialchars($c['category_type']) ?>', '<?= htmlspecialchars(addslashes($c['description'] ?? '')) ?>', '<?= htmlspecialchars($c['rental_rate_type'] ?? 'daily') ?>')"
                                             >
                                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -771,10 +794,21 @@ foreach ($categories as $cat) {
                     <label for="edit_category_type" class="form-label-modern">
                         Category Type <span class="req">*</span>
                     </label>
-                    <select id="edit_category_type" name="category_type" class="form-select-modern" required>
+                    <select id="edit_category_type" name="category_type" class="form-select-modern" required onchange="toggleEditRateType(this.value)">
                         <option value="seed">🌾 Produce / Seed / Crop</option>
                         <option value="equipment">🚜 Machinery / Equipment / Tool</option>
                     </select>
+                </div>
+
+                <div class="form-group-modern" id="edit_rate_type_group" style="margin-bottom: 14px; display: none;">
+                    <label for="edit_rental_rate_type" class="form-label-modern">
+                        Rental Rate Basis (Machinery Pricing Unit) <span class="req">*</span>
+                    </label>
+                    <select id="edit_rental_rate_type" name="rental_rate_type" class="form-select-modern">
+                        <option value="daily">📅 Per Day (Fixed Daily Rental)</option>
+                        <option value="hourly">⏱️ Per Hour (Fixed Hourly Rental)</option>
+                    </select>
+                    <small style="color:#71717a; font-size:11.5px; margin-top:2px;">🔒 <strong>Enforced &amp; Locked:</strong> Defines the rate basis for machinery in this category.</small>
                 </div>
 
                 <div class="form-group-modern" style="margin-bottom: 20px;">
@@ -820,11 +854,30 @@ foreach ($categories as $cat) {
             });
         });
 
-        function openEditModal(id, name, type, desc) {
+        function toggleAddRateType(type) {
+            const group = document.getElementById('add_rate_type_group');
+            if (!group) return;
+            group.style.display = (type === 'equipment') ? 'flex' : 'none';
+        }
+
+        function toggleEditRateType(type) {
+            const group = document.getElementById('edit_rate_type_group');
+            if (!group) return;
+            group.style.display = (type === 'equipment') ? 'flex' : 'none';
+        }
+
+        function openEditModal(id, name, type, desc, rateType) {
             document.getElementById('edit_category_id').value = id;
             document.getElementById('edit_category_name').value = name;
             document.getElementById('edit_category_type').value = type;
             document.getElementById('edit_description').value = desc;
+
+            const editRateTypeSelect = document.getElementById('edit_rental_rate_type');
+            if (editRateTypeSelect) {
+                editRateTypeSelect.value = (rateType === 'hourly') ? 'hourly' : 'daily';
+            }
+            toggleEditRateType(type);
+
             document.getElementById('editModalOverlay').classList.add('active');
         }
 

@@ -35,7 +35,7 @@ $userCity = $uRow['city_municipality'] ?? '';
 $userProvince = $uRow['province'] ?? '';
 
 // Fetch Equipment Categories
-$catRes = $conn->query("SELECT category_id, category_name FROM categories WHERE category_type = 'equipment' ORDER BY category_name ASC");
+$catRes = $conn->query("SELECT category_id, category_name, COALESCE(rental_rate_type, 'daily') AS rental_rate_type FROM categories WHERE category_type = 'equipment' ORDER BY category_name ASC");
 $categories = [];
 while ($c = $catRes->fetch_assoc()) {
     $categories[] = $c;
@@ -50,7 +50,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $categoryId = (int)($_POST['category_id'] ?? 0);
         $brand = trim($_POST['brand'] ?? '');
         $model = trim($_POST['model'] ?? '');
-        $rateType = trim($_POST['rate_type'] ?? 'daily');
         $ratePrice = (float)($_POST['rate_price'] ?? 0);
         $description = trim($_POST['description'] ?? '');
         $locationCity = trim($_POST['location_city'] ?? $userCity);
@@ -59,24 +58,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($name === '' || $categoryId <= 0 || $ratePrice <= 0) {
             $error = 'Please fill in the equipment name, category, and valid rental rate.';
         } else {
-            // Enforce rate type policy based on category
-            $catCheckStmt = $conn->prepare("SELECT category_name FROM categories WHERE category_id = ? LIMIT 1");
+            // Strictly enforce rate type policy based on category
+            $catCheckStmt = $conn->prepare("SELECT category_name, COALESCE(rental_rate_type, 'daily') AS rental_rate_type FROM categories WHERE category_id = ? LIMIT 1");
             $catCheckStmt->bind_param('i', $categoryId);
             $catCheckStmt->execute();
             $catRow = $catCheckStmt->get_result()->fetch_assoc();
             $catCheckStmt->close();
 
-            $catNameLower = strtolower($catRow['category_name'] ?? '');
-            $hourlyKeywords = ['pump', 'sprayer', 'irrigation', 'cutter', 'chainsaw', 'blower', 'mist'];
-            $isHourlyAllowed = false;
-            foreach ($hourlyKeywords as $kw) {
-                if (strpos($catNameLower, $kw) !== false) {
-                    $isHourlyAllowed = true;
-                    break;
-                }
-            }
-
-            $rateType = $isHourlyAllowed ? 'hourly' : 'daily';
+            $rateType = ($catRow['rental_rate_type'] ?? '') === 'hourly' ? 'hourly' : 'daily';
             // Image Upload
             $imageUrl = 'images/placeholder-equipment.svg';
             if (isset($_FILES['equipment_image']) && $_FILES['equipment_image']['error'] === UPLOAD_ERR_OK) {
@@ -203,8 +192,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <select id="category_id" name="category_id" class="form-control" required onchange="handleCategoryChange(this)">
                             <option value="">-- Select Equipment Category --</option>
                             <?php foreach ($categories as $cat): ?>
-                                <option value="<?= (int)$cat['category_id'] ?>" data-name="<?= htmlspecialchars($cat['category_name']) ?>">
-                                    <?= htmlspecialchars($cat['category_name']) ?>
+                                <option value="<?= (int)$cat['category_id'] ?>" data-name="<?= htmlspecialchars($cat['category_name']) ?>" data-rate-type="<?= htmlspecialchars($cat['rental_rate_type']) ?>">
+                                    <?= htmlspecialchars($cat['category_name']) ?> (<?= $cat['rental_rate_type'] === 'hourly' ? 'Per Hour' : 'Per Day' ?>)
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -215,10 +204,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="rate-combo-group">
                             <span class="rate-combo-prefix">₱</span>
                             <input type="number" step="0.01" min="1" id="rate_price" name="rate_price" class="form-control rate-combo-input" required placeholder="3500.00">
-                            <select id="rate_type" name="rate_type" class="rate-combo-unit" style="border:none; outline:none; background:#f4f0e6; cursor:pointer; font-family:inherit; font-size:13px; font-weight:700; color:#122017; padding:0 12px;" onchange="handleRateTypeChange(this.value)">
-                                <option value="daily">/ Per Day</option>
-                                <option value="hourly">/ Per Hour</option>
-                            </select>
+                            <div class="rate-combo-unit" style="background:#ede8d3; color:#122017; font-family:inherit; font-size:13px; font-weight:700; padding:0 14px; border-left:1px solid #d8cba1; user-select:none; display:flex; align-items:center; gap:5px;" title="Fixed rental rate basis for this category">
+                                <span id="rate_unit_text">/ Per Day</span>
+                                <span style="font-size:11px; opacity:0.6;">🔒</span>
+                            </div>
+                            <input type="hidden" id="rate_type" name="rate_type" value="daily">
                         </div>
                         <small style="color:#5e604e; font-size:11px; margin-top:5px; display:block;">🛡️ <strong>Damage & Loss Protection:</strong> A 20% refundable deposit is automatically added during booking to protect you against machinery damage or loss.</small>
                     </div>
@@ -277,45 +267,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </footer>
 
 <script>
-// Dynamic Category Rate Automatic Assignment
+// Category Rate Assignment & Enforcement
 function handleCategoryChange(selectElement) {
     if (!selectElement) return;
     const selectedOption = selectElement.options[selectElement.selectedIndex];
-    const catName = (selectedOption ? (selectedOption.getAttribute('data-name') || selectedOption.text || '') : '').toLowerCase();
-    const rateTypeSelect = document.getElementById('rate_type');
+    const rateTypeHidden = document.getElementById('rate_type');
+    const rateUnitText = document.getElementById('rate_unit_text');
     const ratePriceInput = document.getElementById('rate_price');
 
-    if (!catName || selectElement.value === '') {
+    if (!selectedOption || selectElement.value === '') {
         return;
     }
 
-    // Small power implements & tools that are rented by the hour
-    const smallHourlyKeywords = ['pump', 'sprayer', 'irrigation', 'cutter', 'chainsaw', 'blower', 'mist'];
+    const rateType = selectedOption.getAttribute('data-rate-type') || 'daily';
 
-    let isHourly = false;
-    for (let kw of smallHourlyKeywords) {
-        if (catName.includes(kw)) {
-            isHourly = true;
-            break;
+    if (rateType === 'hourly') {
+        if (rateTypeHidden) rateTypeHidden.value = 'hourly';
+        if (rateUnitText) rateUnitText.textContent = '/ Per Hour';
+        if (ratePriceInput && (!ratePriceInput.value || ratePriceInput.value === '3500.00')) {
+            ratePriceInput.placeholder = '250.00';
         }
-    }
-
-    if (isHourly) {
-        if (rateTypeSelect) rateTypeSelect.value = 'hourly';
-        if (ratePriceInput && (!ratePriceInput.value || ratePriceInput.value === '3500.00')) ratePriceInput.placeholder = '250.00';
     } else {
-        if (rateTypeSelect) rateTypeSelect.value = 'daily';
-        if (ratePriceInput && (!ratePriceInput.value || ratePriceInput.value === '250.00')) ratePriceInput.placeholder = '3500.00';
-    }
-}
-
-function handleRateTypeChange(type) {
-    const ratePriceInput = document.getElementById('rate_price');
-    if (!ratePriceInput) return;
-    if (type === 'hourly') {
-        ratePriceInput.placeholder = '250.00';
-    } else {
-        ratePriceInput.placeholder = '3500.00';
+        if (rateTypeHidden) rateTypeHidden.value = 'daily';
+        if (rateUnitText) rateUnitText.textContent = '/ Per Day';
+        if (ratePriceInput && (!ratePriceInput.value || ratePriceInput.value === '250.00')) {
+            ratePriceInput.placeholder = '3500.00';
+        }
     }
 }
 
