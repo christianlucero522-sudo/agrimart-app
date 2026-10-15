@@ -217,3 +217,55 @@ if (!$schemaChecked) {
 
 require_once __DIR__ . '/sms_helper.php';
 
+/**
+ * Automatically synchronize user verification and account records between local XAMPP and Clever Cloud.
+ * This guarantees that when a user verifies on mobile via Vercel, localhost immediately reflects the verified status.
+ */
+function syncUserVerificationWithCloud($email, $conn) {
+    if (empty($email) || !$conn) return;
+
+    $dbHost = $conn->host_info ?? '';
+    $isLocal = (strpos($dbHost, '127.0.0.1') !== false || strpos($dbHost, 'localhost') !== false);
+    if (!$isLocal) return;
+
+    try {
+        $cloudConn = @new mysqli('blpcpqtohlaqhpgy6nte-mysql.services.clever-cloud.com', 'ui0fiyieoo7h6gn8', 'yVyYoZcZjbLv0XlWzhYd', 'blpcpqtohlaqhpgy6nte', 3306);
+        if ($cloudConn && !$cloudConn->connect_error) {
+            $stmt = $cloudConn->prepare("SELECT user_id, full_name, email, phone, password, role, is_verified, face_verified, status, email_verified FROM users WHERE email = ? LIMIT 1");
+            if ($stmt) {
+                $stmt->bind_param('s', $email);
+                $stmt->execute();
+                $cUser = $stmt->get_result()->fetch_assoc();
+                $stmt->close();
+
+                if ($cUser) {
+                    $lStmt = $conn->prepare("SELECT user_id, email_verified FROM users WHERE email = ? LIMIT 1");
+                    $lStmt->bind_param('s', $email);
+                    $lStmt->execute();
+                    $lUser = $lStmt->get_result()->fetch_assoc();
+                    $lStmt->close();
+
+                    if ($lUser) {
+                        // User exists locally: if cloud is verified, sync verified state to local DB
+                        if ((int)$cUser['email_verified'] === 1 && (int)$lUser['email_verified'] === 0) {
+                            $up = $conn->prepare("UPDATE users SET email_verified = 1, email_verification_token = NULL WHERE user_id = ?");
+                            $up->bind_param('i', $lUser['user_id']);
+                            $up->execute();
+                            $up->close();
+                        }
+                    } else {
+                        // User was registered on Vercel: replicate user locally so they can log in seamlessly on localhost
+                        $ins = $conn->prepare("INSERT INTO users (full_name, email, phone, password, role, is_verified, face_verified, status, email_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                        if ($ins) {
+                            $ins->bind_param('ssssssssi', $cUser['full_name'], $cUser['email'], $cUser['phone'], $cUser['password'], $cUser['role'], $cUser['is_verified'], $cUser['face_verified'], $cUser['status'], $cUser['email_verified']);
+                            $ins->execute();
+                            $ins->close();
+                        }
+                    }
+                }
+            }
+            $cloudConn->close();
+        }
+    } catch (\Throwable $t) {}
+}
+

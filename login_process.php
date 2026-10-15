@@ -54,9 +54,11 @@ if (
 
 /*
 |--------------------------------------------------------------------------
-| Find user
+| Synchronize with cloud and find user
 |--------------------------------------------------------------------------
 */
+
+syncUserVerificationWithCloud($email, $conn);
 
 $sql = "
     SELECT

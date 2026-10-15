@@ -1,11 +1,28 @@
 <?php
 session_start();
 
+require_once 'config.php';
+
 $error = $_SESSION['login_error'] ?? '';
 $success = $_SESSION['login_success'] ?? '';
 unset($_SESSION['login_error'], $_SESSION['login_success']);
 
 $prefillEmail = trim($_GET['email'] ?? '');
+if (!empty($prefillEmail)) {
+    // Proactively sync verification state from Clever Cloud (e.g. if user verified on phone via Vercel)
+    syncUserVerificationWithCloud($prefillEmail, $conn);
+    $vCheck = $conn->prepare("SELECT email_verified FROM users WHERE email = ? LIMIT 1");
+    if ($vCheck) {
+        $vCheck->bind_param('s', $prefillEmail);
+        $vCheck->execute();
+        $vRow = $vCheck->get_result()->fetch_assoc();
+        $vCheck->close();
+        if ($vRow && (int)$vRow['email_verified'] === 1 && strpos($error, 'verify your email') !== false) {
+            $error = '';
+            $success = "Your email address is verified! Please enter your password to sign in.";
+        }
+    }
+}
 
 if (isset($_SESSION['user_id'])) {
     if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') {
