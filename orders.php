@@ -21,6 +21,8 @@ $sql = "
         o.total_amount,
         o.shipping_address,
         o.order_status,
+        o.cancellation_reason,
+        o.cancelled_by,
         o.created_at,
         p.payment_method,
         p.payment_status,
@@ -136,6 +138,12 @@ $stmt->close();
                     </div>
                     <span class="badge badge-<?= htmlspecialchars($o['order_status']) ?>"><?= htmlspecialchars(ucfirst($o['order_status'])) ?></span>
                     <div class="order-total">₱<?= number_format((float)$o['total_amount'], 2) ?></div>
+                    <?php if ($o['order_status'] === 'cancelled'): ?>
+                        <div style="background:#fae6df; border:1px solid #efb7aa; padding:8px 12px; margin-top:10px; border-radius:3px; color:#7e2b1b; font-size:12.5px;">
+                            <strong>Cancelled by <?= ucfirst($o['cancelled_by'] ?? 'Seller') ?>:</strong>
+                            <?= htmlspecialchars($o['cancellation_reason'] ?: 'No reason specified') ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
                 <div>
                     <a href="order_details.php?id=<?= (int)$o['order_id'] ?>" class="btn btn-dark">View Details →</a>

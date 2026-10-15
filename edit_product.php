@@ -76,7 +76,9 @@ $productSql = "
         quantity,
         unit,
         image_url,
-        status
+        status,
+        location_city,
+        location_province
 
     FROM products
 
@@ -181,6 +183,12 @@ $quantity =
 $unit =
     $product['unit'] ?? '';
 
+$locationCity =
+    $product['location_city'] ?? '';
+
+$locationProvince =
+    $product['location_province'] ?? '';
+
 $currentImage =
     $product['image_url'] ?? '';
 
@@ -229,6 +237,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $unit = trim(
         $_POST['unit'] ?? ''
+    );
+
+    $locationCity = trim(
+        $_POST['location_city'] ?? ''
+    );
+
+    $locationProvince = trim(
+        $_POST['location_province'] ?? ''
     );
 
 
@@ -499,7 +515,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 price = ?,
                 quantity = ?,
                 unit = ?,
-                image_url = ?
+                image_url = ?,
+                location_city = ?,
+                location_province = ?
 
             WHERE product_id = ?
               AND user_id = ?
@@ -519,7 +537,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $updateStmt->bind_param(
 
-            'issdissii',
+            'issdissssii',
 
             $categoryId,
             $productName,
@@ -528,6 +546,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $quantityValue,
             $unit,
             $newImagePath,
+            $locationCity,
+            $locationProvince,
             $productId,
             $userId
 
@@ -1417,6 +1437,35 @@ function getEditProductImage($imageUrl)
                         required
                     >
 
+                </div>
+
+                <!-- LOCATION CITY / MUNICIPALITY -->
+                <div class="form-group">
+                    <label for="location_city">Farm / Pickup City or Municipality</label>
+                    <input
+                        type="text"
+                        id="location_city"
+                        name="location_city"
+                        class="form-control"
+                        value="<?= htmlspecialchars((string) $locationCity, ENT_QUOTES, 'UTF-8') ?>"
+                        placeholder="e.g. Flora, Cabanatuan City"
+                        required
+                    >
+                    <small style="color:#777; font-size:11px; margin-top:2px; display:block;">Used to match nearby buyers looking for fresh crops.</small>
+                </div>
+
+                <!-- LOCATION PROVINCE -->
+                <div class="form-group">
+                    <label for="location_province">Province</label>
+                    <input
+                        type="text"
+                        id="location_province"
+                        name="location_province"
+                        class="form-control"
+                        value="<?= htmlspecialchars((string) $locationProvince, ENT_QUOTES, 'UTF-8') ?>"
+                        placeholder="e.g. Apayao, Nueva Ecija"
+                        required
+                    >
                 </div>
 
 

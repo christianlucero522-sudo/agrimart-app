@@ -23,6 +23,26 @@ if ($fullName !== '') {
 
 }
 
+// Fetch User Address for Nearest / Local Detection
+$userCity = '';
+$userProvince = '';
+$userBarangay = '';
+if ($isLoggedIn) {
+    $userId = (int)$_SESSION['user_id'];
+    $uAddrStmt = $conn->prepare("SELECT city_municipality, province, barangay FROM addresses WHERE user_id = ? LIMIT 1");
+    if ($uAddrStmt) {
+        $uAddrStmt->bind_param('i', $userId);
+        $uAddrStmt->execute();
+        $uAddrRow = $uAddrStmt->get_result()->fetch_assoc();
+        if ($uAddrRow) {
+            $userCity = trim($uAddrRow['city_municipality'] ?? '');
+            $userProvince = trim($uAddrRow['province'] ?? '');
+            $userBarangay = trim($uAddrRow['barangay'] ?? '');
+        }
+        $uAddrStmt->close();
+    }
+}
+
 
 /* =========================================================
    GET SEARCH / FILTER VALUES
@@ -33,6 +53,15 @@ $search = trim($_GET['search'] ?? '');
 $categoryId = isset($_GET['category'])
     ? (int) $_GET['category']
     : 0;
+
+$filterLocation = trim($_GET['location'] ?? '');
+$cityFilter = $filterLocation;
+$provFilter = '';
+if (strpos($filterLocation, ',') !== false) {
+    $locParts = explode(',', $filterLocation, 2);
+    $cityFilter = trim($locParts[0]);
+    $provFilter = trim($locParts[1]);
+}
 
 
 /* =========================================================
@@ -77,6 +106,8 @@ $sql = "
         p.unit,
         p.image_url,
         p.status,
+        COALESCE(NULLIF(p.location_city, ''), a.city_municipality, 'Flora') AS location_city,
+        COALESCE(NULLIF(p.location_province, ''), a.province, 'Apayao') AS location_province,
 
         c.category_name,
 
@@ -89,6 +120,9 @@ $sql = "
 
     INNER JOIN users u
         ON p.user_id = u.user_id
+
+    LEFT JOIN addresses a
+        ON u.user_id = a.user_id
 
     WHERE p.status = 'active'
       AND c.category_type = 'seed'
@@ -110,6 +144,8 @@ if ($search !== '') {
             p.product_name LIKE ?
             OR p.description LIKE ?
             OR u.full_name LIKE ?
+            OR p.location_city LIKE ?
+            OR p.location_province LIKE ?
         )
     ";
 
@@ -118,8 +154,10 @@ if ($search !== '') {
     $params[] = $searchValue;
     $params[] = $searchValue;
     $params[] = $searchValue;
+    $params[] = $searchValue;
+    $params[] = $searchValue;
 
-    $types .= 'sss';
+    $types .= 'sssss';
 
 }
 
@@ -136,6 +174,39 @@ if ($categoryId > 0) {
 
     $types .= 'i';
 
+}
+
+
+/* LOCATION FILTER */
+
+if ($filterLocation !== '') {
+    if (!empty($provFilter)) {
+        $sql .= " AND (
+            (p.location_city LIKE ? OR a.city_municipality LIKE ?)
+            OR (p.location_province LIKE ? OR a.province LIKE ?)
+            OR CONCAT_WS(', ', COALESCE(NULLIF(p.location_city, ''), a.city_municipality), COALESCE(NULLIF(p.location_province, ''), a.province)) LIKE ?
+        ) ";
+        $cVal = '%' . $cityFilter . '%';
+        $pVal = '%' . $provFilter . '%';
+        $fullVal = '%' . $filterLocation . '%';
+        $params[] = $cVal;
+        $params[] = $pVal;
+        $params[] = $fullVal;
+        $types .= 'sss';
+    } else {
+        $sql .= " AND (
+            p.location_city LIKE ? 
+            OR a.city_municipality LIKE ?
+            OR p.location_province LIKE ?
+            OR a.province LIKE ?
+        ) ";
+        $locVal = '%' . $filterLocation . '%';
+        $params[] = $locVal;
+        $params[] = $locVal;
+        $params[] = $locVal;
+        $params[] = $locVal;
+        $types .= 'ssss';
+    }
 }
 
 
@@ -777,6 +848,13 @@ function getProductImage($imageUrl)
 
             </select>
 
+            <input
+                type="text"
+                name="location"
+                placeholder="City or Province..."
+                value="<?= htmlspecialchars($filterLocation, ENT_QUOTES, 'UTF-8') ?>"
+                style="padding: 10px 14px; border: 1px solid rgba(17,55,36,0.18); background: #fff; font-size: 14px; border-radius: 3px; outline: none; min-width: 160px;"
+            >
 
             <button
                 type="submit"
@@ -788,7 +866,8 @@ function getProductImage($imageUrl)
 
             <?php if (
                 $search !== '' ||
-                $categoryId > 0
+                $categoryId > 0 ||
+                $filterLocation !== ''
             ): ?>
 
 
@@ -886,19 +965,19 @@ function getProductImage($imageUrl)
 
                     <div class="card-body">
 
-
-                        <span class="card-cat">
-
-                            Seller:
-
-                            <?= htmlspecialchars(
-                                $product['seller_name'],
-                                ENT_QUOTES,
-                                'UTF-8'
-                            ) ?>
-
-                        </span>
-
+                        <?php 
+                        $isLocalCity = !empty($userCity) && (stripos($product['location_city'], $userCity) !== false || stripos($userCity, $product['location_city']) !== false);
+                        ?>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+                            <span class="card-cat" style="margin-bottom:0;">
+                                Seller: <?= htmlspecialchars($product['seller_name'], ENT_QUOTES, 'UTF-8') ?>
+                            </span>
+                            <?php if ($isLocalCity): ?>
+                                <span style="background:#d7ecc7; color:#1b4f15; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:10px; display:inline-flex; align-items:center; gap:3px;">
+                                    🌱 Local Farm
+                                </span>
+                            <?php endif; ?>
+                        </div>
 
                         <h3>
 
@@ -909,6 +988,13 @@ function getProductImage($imageUrl)
                             ) ?>
 
                         </h3>
+
+                        <!-- LOCATION PILL -->
+                        <div style="margin-bottom:10px;">
+                            <span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; color:#3b4737; background:#ede8d3; padding:3px 9px; border-radius:3px; font-weight:600;">
+                                📍 <?= htmlspecialchars($product['location_city'], ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars($product['location_province'], ENT_QUOTES, 'UTF-8') ?>
+                            </span>
+                        </div>
 
 
                         <p class="product-description">

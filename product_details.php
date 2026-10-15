@@ -21,6 +21,24 @@ if ($fullName !== '') {
     $firstName = $parts[0];
 }
 
+// Fetch Buyer Address for Proximity
+$userCity = '';
+$userProvince = '';
+if ($isLoggedIn) {
+    $currentUserId = (int)$_SESSION['user_id'];
+    $uAddrStmt = $conn->prepare("SELECT city_municipality, province FROM addresses WHERE user_id = ? LIMIT 1");
+    if ($uAddrStmt) {
+        $uAddrStmt->bind_param('i', $currentUserId);
+        $uAddrStmt->execute();
+        $uAddrRow = $uAddrStmt->get_result()->fetch_assoc();
+        if ($uAddrRow) {
+            $userCity = trim($uAddrRow['city_municipality'] ?? '');
+            $userProvince = trim($uAddrRow['province'] ?? '');
+        }
+        $uAddrStmt->close();
+    }
+}
+
 
 /* =========================================================
    PRODUCT ID
@@ -54,6 +72,8 @@ $sql = "
         p.image_url,
         p.status,
         p.created_at,
+        COALESCE(NULLIF(p.location_city, ''), a.city_municipality, 'Flora') AS location_city,
+        COALESCE(NULLIF(p.location_province, ''), a.province, 'Apayao') AS location_province,
 
         c.category_name,
 
@@ -67,6 +87,9 @@ $sql = "
 
     INNER JOIN users u
         ON p.user_id = u.user_id
+
+    LEFT JOIN addresses a
+        ON u.user_id = a.user_id
 
     WHERE p.product_id = ?
       AND p.status = 'active'
@@ -104,6 +127,9 @@ if (!$product) {
 
 $userId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $isOwner = ($isLoggedIn && $userId > 0 && (int)$product['seller_id'] === $userId);
+
+$isNearestCity = !empty($userCity) && (stripos($product['location_city'], $userCity) !== false || stripos($userCity, $product['location_city']) !== false);
+$isNearbyProv = !empty($userProvince) && (stripos($product['location_province'], $userProvince) !== false);
 
 // Fetch Reviews for this product
 $reviewsSql = "
@@ -820,7 +846,7 @@ function getProductImage($imageUrl) {
 
             <!-- SELLER -->
 
-            <p class="seller-name">
+            <p class="seller-name" style="margin-bottom: 8px;">
 
                 Sold by
 
@@ -835,6 +861,28 @@ function getProductImage($imageUrl) {
                 </strong>
 
             </p>
+
+            <!-- FARM / PICKUP LOCATION -->
+            <div style="margin-bottom: 18px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: #23581c; background: #ede8d3; padding: 5px 12px; border-radius: 4px; font-weight: 600;">
+                    📍 Farm Location: <?= htmlspecialchars($product['location_city'], ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars($product['location_province'], ENT_QUOTES, 'UTF-8') ?>
+                </span>
+                <?php if ($isNearestCity): ?>
+                    <span style="background: #d7ecc7; color: #1b4f15; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                        🎯 Local Farm (In your City)
+                    </span>
+                <?php elseif ($isNearbyProv): ?>
+                    <span style="background: #eef4ea; color: #3b6e31; font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 12px;">
+                        📍 In your Province
+                    </span>
+                <?php endif; ?>
+            </div>
+
+            <?php if ($isNearestCity): ?>
+                <div style="background:#e8eedf; border:1px solid #cbd8bd; padding:12px 16px; margin-bottom:18px; border-radius:3px; font-size:13px; color:#122017; line-height:1.5;">
+                    🌱 <strong>Local Farm Produce:</strong> This agricultural product is harvested and sourced directly from <strong><?= htmlspecialchars($product['location_city']) ?></strong>. Buying local supports regional farmers and ensures peak freshness.
+                </div>
+            <?php endif; ?>
 
 
 
@@ -1038,6 +1086,9 @@ function getProductImage($imageUrl) {
                 </p>
                 <p>
                     Seller: <?= htmlspecialchars($product['seller_name'], ENT_QUOTES, 'UTF-8') ?>
+                </p>
+                <p>
+                    📍 Farm / Pickup Origin: <?= htmlspecialchars($product['location_city'], ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars($product['location_province'], ENT_QUOTES, 'UTF-8') ?>
                 </p>
             </div>
 

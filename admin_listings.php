@@ -140,11 +140,14 @@ $pRes = $conn->query("
         p.admin_deactivated,
         p.retrieval_status,
         p.deactivation_reason,
+        COALESCE(NULLIF(p.location_city, ''), a.city_municipality, 'Flora') AS location_city,
+        COALESCE(NULLIF(p.location_province, ''), a.province, 'Apayao') AS location_province,
         c.category_name,
         u.full_name AS seller_name
     FROM products p
     INNER JOIN categories c ON p.category_id = c.category_id
     INNER JOIN users u ON p.user_id = u.user_id
+    LEFT JOIN addresses a ON p.user_id = a.user_id
     WHERE p.status NOT IN ('deleted', 'archived')
     ORDER BY p.product_id DESC
 ");
@@ -169,11 +172,14 @@ $eRes = $conn->query("
         e.admin_deactivated,
         e.retrieval_status,
         e.deactivation_reason,
+        COALESCE(NULLIF(e.location_city, ''), a.city_municipality, 'Flora') AS location_city,
+        COALESCE(NULLIF(e.location_province, ''), a.province, 'Apayao') AS location_province,
         c.category_name,
         u.full_name AS seller_name
     FROM equipment e
     INNER JOIN categories c ON e.category_id = c.category_id
     INNER JOIN users u ON e.user_id = u.user_id
+    LEFT JOIN addresses a ON e.user_id = a.user_id
     WHERE e.status NOT IN ('deleted', 'archived')
     ORDER BY e.equipment_id DESC
 ");
@@ -280,11 +286,14 @@ $activeNav = 'listings';
                                 $pUnitLabel = !empty($p['unit']) ? ' / ' . htmlspecialchars($p['unit']) : '';
                                 $pPriceFormatted = '<strong>₱' . number_format((float)$p['price'], 2) . '</strong>' . $pUnitLabel;
                                 $pStockText = (int)$p['quantity'] . ' left';
-                                $pSearchText = strtolower(htmlspecialchars($p['name'] . ' ' . ($p['category_name'] ?? '') . ' ' . ($p['seller_name'] ?? '')));
+                                $pSearchText = strtolower(htmlspecialchars($p['name'] . ' ' . ($p['category_name'] ?? '') . ' ' . ($p['seller_name'] ?? '') . ' ' . ($p['location_city'] ?? '') . ' ' . ($p['location_province'] ?? '')));
                             ?>
                                 <tr class="listing-row-item" data-search="<?= $pSearchText ?>">
                                     <td>
                                         <span class="item-name-bold"><?= htmlspecialchars($p['name']) ?></span>
+                                        <div style="font-size:11.5px; color:#52525b; margin-top:3px; display:flex; align-items:center; gap:3px;">
+                                            📍 <?= htmlspecialchars($p['location_city']) ?>, <?= htmlspecialchars($p['location_province']) ?>
+                                        </div>
                                     </td>
                                     <td><?= htmlspecialchars($p['category_name'] ?: 'General Agriculture') ?></td>
                                     <td><?= htmlspecialchars($p['seller_name'] ?: 'Farmer') ?></td>
@@ -360,11 +369,14 @@ $activeNav = 'listings';
                                 $ePriceFormatted = '<strong>₱' . number_format((float)$e['price'], 2) . '</strong>' . $eRateLabel;
                                 $avail = strtolower($e['availability'] ?? 'available');
                                 $availBadgeClass = ($avail === 'rented') ? 'rented' : (($avail === 'maintenance') ? 'maintenance' : 'available');
-                                $eSearchText = strtolower(htmlspecialchars($e['name'] . ' ' . ($e['category_name'] ?? '') . ' ' . ($e['seller_name'] ?? '')));
+                                $eSearchText = strtolower(htmlspecialchars($e['name'] . ' ' . ($e['category_name'] ?? '') . ' ' . ($e['seller_name'] ?? '') . ' ' . ($e['location_city'] ?? '') . ' ' . ($e['location_province'] ?? '')));
                             ?>
                                 <tr class="listing-row-item" data-search="<?= $eSearchText ?>">
                                     <td>
                                         <span class="item-name-bold"><?= htmlspecialchars($e['name']) ?></span>
+                                        <div style="font-size:11.5px; color:#52525b; margin-top:3px; display:flex; align-items:center; gap:3px;">
+                                            📍 <?= htmlspecialchars($e['location_city']) ?>, <?= htmlspecialchars($e['location_province']) ?>
+                                        </div>
                                     </td>
                                     <td><?= htmlspecialchars($e['category_name'] ?: 'Machinery & Tools') ?></td>
                                     <td><?= htmlspecialchars($e['seller_name'] ?: 'Owner') ?></td>
