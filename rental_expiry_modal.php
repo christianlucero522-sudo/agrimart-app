@@ -1,5 +1,5 @@
 <?php
-// rental_expiry_modal.php - Pop-up Modal for Rentals Nearing Expiry / One-Hour Reminder & Extension
+// rental_expiry_modal.php - Pop-up Modal for Rentals Nearing Expiry / One-Hour Reminder & Overdue Return/Extend
 if (!isset($_SESSION['user_id']) || !isset($conn)) {
     return;
 }
@@ -47,6 +47,7 @@ $mbResult = $mbStmt->get_result();
 $activeRentalsList = [];
 $autoPopupBooking = null;
 $currentTime = time();
+$todayDate = date('Y-m-d');
 $forceTestPopup = isset($_GET['test_expire_popup']) || isset($_GET['test_expiry']) || isset($_GET['popup_test']);
 
 while ($row = $mbResult->fetch_assoc()) {
@@ -71,8 +72,27 @@ while ($row = $mbResult->fetch_assoc()) {
     $diffSeconds = $endTimestamp - $currentTime;
     $diffMinutes = (int)ceil($diffSeconds / 60);
 
-    // Is it about to end in an hour? (Between 0 and 3600 seconds, or within 60 mins)
-    $isEndingSoon = ($diffSeconds > -1800 && $diffSeconds <= 3600);
+    // Determine if overdue or ending soon
+    $isOverdue = false;
+    $daysOverdue = 0;
+
+    if ($isHourly) {
+        $isOverdue = ($diffSeconds < 0);
+        if ($isOverdue) {
+            $daysOverdue = max(1, (int)ceil(abs($diffSeconds) / 86400));
+        }
+    } else {
+        if ($row['end_date'] < $todayDate) {
+            $isOverdue = true;
+            $daysOverdue = max(1, (int)round((strtotime($todayDate) - strtotime($row['end_date'])) / 86400));
+        } elseif ($row['end_date'] === $todayDate && $currentTime > $endTimestamp) {
+            $isOverdue = true;
+            $daysOverdue = 1;
+        }
+    }
+
+    // Is it ending soon in an hour? (Positive and within 60 mins)
+    $isEndingSoon = (!$isOverdue && $diffSeconds > 0 && $diffSeconds <= 3600);
 
     $bookingPayload = [
         'booking_id' => (int)$row['booking_id'],
@@ -91,6 +111,8 @@ while ($row = $mbResult->fetch_assoc()) {
         'scheduled_end_formatted' => date('M d, Y h:i A', $endTimestamp),
         'diff_seconds' => $diffSeconds,
         'diff_minutes' => $diffMinutes,
+        'is_overdue' => $isOverdue,
+        'days_overdue' => $daysOverdue,
         'is_ending_soon' => $isEndingSoon,
         'total_amount' => (float)$row['total_amount'],
         'owner_name' => $row['owner_name'],
@@ -100,8 +122,10 @@ while ($row = $mbResult->fetch_assoc()) {
 
     $activeRentalsList[] = $bookingPayload;
 
-    // Pick for auto popup if ending soon, or first booking if forced test
-    if ($isEndingSoon && $autoPopupBooking === null) {
+    // Prioritize overdue booking for automatic alert, otherwise pick ending-soon booking
+    if ($isOverdue && ($autoPopupBooking === null || !$autoPopupBooking['is_overdue'])) {
+        $autoPopupBooking = $bookingPayload;
+    } elseif ($isEndingSoon && $autoPopupBooking === null) {
         $autoPopupBooking = $bookingPayload;
     }
 }
@@ -109,8 +133,14 @@ $mbStmt->close();
 
 if ($forceTestPopup && $autoPopupBooking === null && !empty($activeRentalsList)) {
     $autoPopupBooking = $activeRentalsList[0];
-    $autoPopupBooking['is_ending_soon'] = true;
-    $autoPopupBooking['diff_minutes'] = 52;
+    if (isset($_GET['test_overdue'])) {
+        $autoPopupBooking['is_overdue'] = true;
+        $autoPopupBooking['days_overdue'] = 2;
+        $autoPopupBooking['is_ending_soon'] = false;
+    } else {
+        $autoPopupBooking['is_ending_soon'] = true;
+        $autoPopupBooking['diff_minutes'] = 52;
+    }
 }
 
 $currentRequestUri = $_SERVER['REQUEST_URI'] ?? 'bookings.php';
@@ -166,6 +196,10 @@ $currentRequestUri = $_SERVER['REQUEST_URI'] ?? 'bookings.php';
     display: flex;
     align-items: center;
     gap: 14px;
+    transition: background 0.3s;
+}
+.rem-header.overdue-mode {
+    background: linear-gradient(135deg, #7f1d1d 0%, #450a0a 100%);
 }
 .rem-pulse-icon {
     width: 44px;
@@ -180,10 +214,20 @@ $currentRequestUri = $_SERVER['REQUEST_URI'] ?? 'bookings.php';
     box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.7);
     animation: remPulse 2s infinite;
 }
+.rem-header.overdue-mode .rem-pulse-icon {
+    background: #b91c1c;
+    box-shadow: 0 0 0 0 rgba(185, 28, 28, 0.7);
+    animation: remPulseOverdue 1.8s infinite;
+}
 @keyframes remPulse {
     0% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.7); }
     70% { box-shadow: 0 0 0 12px rgba(217, 119, 6, 0); }
     100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0); }
+}
+@keyframes remPulseOverdue {
+    0% { box-shadow: 0 0 0 0 rgba(185, 28, 28, 0.7); }
+    70% { box-shadow: 0 0 0 14px rgba(185, 28, 28, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(185, 28, 28, 0); }
 }
 .rem-header-titles {
     flex: 1;
@@ -200,10 +244,14 @@ $currentRequestUri = $_SERVER['REQUEST_URI'] ?? 'bookings.php';
     border-radius: 20px;
     margin-bottom: 4px;
 }
+.rem-header.overdue-mode .rem-header-badge {
+    background: #fee2e2;
+    color: #991b1b;
+}
 .rem-header h3 {
     margin: 0;
     font-family: Georgia, serif;
-    font-size: 21px;
+    font-size: 20px;
     font-weight: 700;
     color: #fff;
     line-height: 1.25;
@@ -243,6 +291,12 @@ $currentRequestUri = $_SERVER['REQUEST_URI'] ?? 'bookings.php';
     font-size: 14px;
     color: #713f12;
     line-height: 1.45;
+}
+.rem-alert-card.overdue-alert {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-left: 4px solid #b91c1c;
+    color: #991b1b;
 }
 .rem-equip-card {
     display: flex;
@@ -298,16 +352,6 @@ $currentRequestUri = $_SERVER['REQUEST_URI'] ?? 'bookings.php';
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
-.rem-select, .rem-input {
-    width: 100%;
-    padding: 10px 14px;
-    border: 1px solid #d8d0b7;
-    border-radius: 6px;
-    font-size: 15px;
-    color: #122017;
-    background: #fff;
-    box-sizing: border-box;
-}
 .rem-pills {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -342,6 +386,10 @@ $currentRequestUri = $_SERVER['REQUEST_URI'] ?? 'bookings.php';
     padding: 14px 16px;
     margin: 18px 0;
     font-size: 13.5px;
+}
+.rem-summary-box.overdue-summary {
+    background: #fffdf5;
+    border-color: #fef08a;
 }
 .rem-summary-row {
     display: flex;
@@ -385,17 +433,19 @@ $currentRequestUri = $_SERVER['REQUEST_URI'] ?? 'bookings.php';
 }
 .rem-footer-actions {
     display: flex;
-    gap: 12px;
+    gap: 10px;
     margin-top: 22px;
+    flex-wrap: wrap;
 }
 .rem-btn-submit {
     flex: 2;
+    min-width: 180px;
     background: #1b382b;
     color: #ffffff;
     border: none;
-    padding: 13px 20px;
+    padding: 13px 18px;
     border-radius: 6px;
-    font-size: 15px;
+    font-size: 14.5px;
     font-weight: 700;
     cursor: pointer;
     display: flex;
@@ -404,18 +454,42 @@ $currentRequestUri = $_SERVER['REQUEST_URI'] ?? 'bookings.php';
     gap: 8px;
     transition: background 0.2s, transform 0.1s;
 }
+.rem-btn-submit.overdue-submit {
+    background: #166534;
+}
 .rem-btn-submit:hover {
     background: #142a20;
 }
-.rem-btn-submit:active {
-    transform: scale(0.99);
+.rem-btn-return {
+    flex: 1.5;
+    min-width: 150px;
+    background: #fff;
+    color: #991b1b;
+    border: 1px solid #f87171;
+    padding: 13px 14px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-align: center;
+    transition: all 0.2s;
+}
+.rem-btn-return:hover {
+    background: #fef2f2;
+    color: #7f1d1d;
+    border-color: #ef4444;
 }
 .rem-btn-dismiss {
     flex: 1;
+    min-width: 90px;
     background: #f4f0df;
     color: #555;
     border: 1px solid #d8d0b7;
-    padding: 13px 16px;
+    padding: 13px 14px;
     border-radius: 6px;
     font-size: 14px;
     font-weight: 600;
@@ -431,19 +505,21 @@ $currentRequestUri = $_SERVER['REQUEST_URI'] ?? 'bookings.php';
 
 <div id="rentalExpiryBackdrop" class="rem-backdrop" onclick="onRemBackdropClick(event)">
     <div class="rem-modal" onclick="event.stopPropagation()">
-        <div class="rem-header">
-            <div class="rem-pulse-icon">⏰</div>
+        <div id="remHeader" class="rem-header">
+            <div id="remPulseIcon" class="rem-pulse-icon">⏰</div>
             <div class="rem-header-titles">
-                <span class="rem-header-badge">Action Required</span>
+                <span id="remHeaderBadge" class="rem-header-badge">Action Required</span>
                 <h3 id="remModalTitle">Rental Ending in 1 Hour!</h3>
             </div>
             <button type="button" class="rem-close-btn" onclick="closeRentalExpiryModal()" title="Close">&times;</button>
         </div>
 
         <div class="rem-body">
-            <!-- Alert Message -->
-            <div class="rem-alert-card">
-                <strong>Your rental is about to end in an hour!</strong> Would you like to extend your booking to keep using the equipment without late return penalties?
+            <!-- Alert Message Box -->
+            <div id="remAlertCard" class="rem-alert-card">
+                <div id="remAlertText">
+                    <strong>Your rental is about to end in an hour!</strong> Would you like to extend your booking to keep using the equipment without late return penalties?
+                </div>
             </div>
 
             <!-- Equipment Summary -->
@@ -468,14 +544,14 @@ $currentRequestUri = $_SERVER['REQUEST_URI'] ?? 'bookings.php';
                 <div class="rem-form-group">
                     <label class="rem-label" id="remDurationLabel">Select Extension Duration:</label>
                     <div id="remPillsContainer" class="rem-pills">
-                        <!-- Populated by JS based on hourly vs daily -->
+                        <!-- Populated dynamically by JS -->
                     </div>
                 </div>
 
                 <!-- Dynamic Calculation Summary -->
-                <div class="rem-summary-box">
+                <div id="remSummaryBox" class="rem-summary-box">
                     <div class="rem-summary-row">
-                        <span>Current Scheduled Return:</span>
+                        <span id="remScheduledLabel">Original Scheduled Return:</span>
                         <strong id="remCurrentReturnText">--</strong>
                     </div>
                     <div class="rem-summary-row">
@@ -516,8 +592,11 @@ $currentRequestUri = $_SERVER['REQUEST_URI'] ?? 'bookings.php';
 
                 <div class="rem-footer-actions">
                     <button type="submit" class="rem-btn-submit" id="remSubmitBtn">
-                        ✓ Confirm & Extend Rental
+                        ✓ Extend Rental
                     </button>
+                    <a href="booking_details.php" id="remReturnBtn" class="rem-btn-return" style="display:none;">
+                        📍 Return Equipment
+                    </a>
                     <button type="button" class="rem-btn-dismiss" onclick="dismissRentalExpiryModal()">
                         Dismiss
                     </button>
@@ -545,16 +624,65 @@ function openRentalExpiryModal(bookingData) {
     document.getElementById('remEquipMeta').textContent = `Brand: ${bookingData.brand || 'Standard'} • Booking #${bookingData.booking_id}`;
     document.getElementById('remRateBadge').textContent = `₱${parseFloat(bookingData.rate_price).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})} / ${bookingData.is_hourly ? 'hour' : 'day'}`;
     
-    // Remaining timer
-    let remainingTxt = 'Ending in an hour';
-    if (bookingData.diff_minutes > 0 && bookingData.diff_minutes <= 60) {
-        remainingTxt = `⏳ Approx. ${bookingData.diff_minutes} min${bookingData.diff_minutes === 1 ? '' : 's'} remaining`;
-    } else if (bookingData.diff_minutes <= 0) {
-        remainingTxt = `⚠️ Scheduled return is due now!`;
+    const headerElem = document.getElementById('remHeader');
+    const pulseIcon = document.getElementById('remPulseIcon');
+    const headerBadge = document.getElementById('remHeaderBadge');
+    const modalTitle = document.getElementById('remModalTitle');
+    const alertCard = document.getElementById('remAlertCard');
+    const alertText = document.getElementById('remAlertText');
+    const timeBadge = document.getElementById('remTimeBadge');
+    const returnBtn = document.getElementById('remReturnBtn');
+    const submitBtn = document.getElementById('remSubmitBtn');
+    const summaryBox = document.getElementById('remSummaryBox');
+
+    returnBtn.href = `booking_details.php?id=${bookingData.booking_id}`;
+
+    // OVERDUE MODE vs ONE-HOUR EXPIRY MODE
+    if (bookingData.is_overdue) {
+        headerElem.classList.add('overdue-mode');
+        pulseIcon.textContent = '🚨';
+        headerBadge.textContent = '🚨 OVERDUE NOTICE';
+        modalTitle.textContent = 'Rental Exceeded Return Date!';
+
+        alertCard.className = 'rem-alert-card overdue-alert';
+        alertText.innerHTML = `<strong>This rental has exceeded the rental date return or extend!</strong> Please return the equipment immediately to <u>${bookingData.dropoff_location}</u> or extend your rental now to avoid further late penalties.`;
+
+        const lateDays = bookingData.days_overdue || 1;
+        timeBadge.textContent = `🚨 OVERDUE: ${lateDays} Day${lateDays > 1 ? 's' : ''} Late (5% Fee)`;
+        timeBadge.style.background = '#fee2e2';
+        timeBadge.style.color = '#991b1b';
+        timeBadge.style.borderColor = '#f87171';
+
+        returnBtn.style.display = 'inline-flex';
+        submitBtn.classList.add('overdue-submit');
+        summaryBox.classList.add('overdue-summary');
     } else {
-        remainingTxt = `⏳ Due on ${bookingData.scheduled_end_formatted}`;
+        headerElem.classList.remove('overdue-mode');
+        pulseIcon.textContent = '⏰';
+        headerBadge.textContent = 'ACTION REQUIRED';
+        modalTitle.textContent = 'Rental Ending in 1 Hour!';
+
+        alertCard.className = 'rem-alert-card';
+        alertText.innerHTML = `<strong>Your rental is about to end in an hour!</strong> Would you like to extend your booking to keep using the equipment without late return penalties?`;
+
+        let remainingTxt = 'Ending in an hour';
+        if (bookingData.diff_minutes > 0 && bookingData.diff_minutes <= 60) {
+            remainingTxt = `⏳ Approx. ${bookingData.diff_minutes} min${bookingData.diff_minutes === 1 ? '' : 's'} remaining`;
+        } else if (bookingData.diff_minutes <= 0) {
+            remainingTxt = `⚠️ Scheduled return is due now!`;
+        } else {
+            remainingTxt = `⏳ Due on ${bookingData.scheduled_end_formatted}`;
+        }
+        timeBadge.textContent = remainingTxt;
+        timeBadge.style.background = '#fef3c7';
+        timeBadge.style.color = '#92400e';
+        timeBadge.style.borderColor = '#fde68a';
+
+        returnBtn.style.display = 'none';
+        submitBtn.classList.remove('overdue-submit');
+        summaryBox.classList.remove('overdue-summary');
     }
-    document.getElementById('remTimeBadge').textContent = remainingTxt;
+
     document.getElementById('remCurrentReturnText').textContent = bookingData.scheduled_end_formatted;
 
     // Render Pills
@@ -599,7 +727,14 @@ function updateExtensionCalculations() {
     const newTotal = currentTotal + addedAmount;
 
     // Calculate new end date/time
-    let newEndTimestamp = CURRENT_MODAL_BOOKING.end_timestamp;
+    // If overdue, base the extension from right now/today forward so new date is in the future
+    let baseTimestamp = CURRENT_MODAL_BOOKING.end_timestamp;
+    if (CURRENT_MODAL_BOOKING.is_overdue) {
+        const nowSec = Math.floor(Date.now() / 1000);
+        baseTimestamp = Math.max(CURRENT_MODAL_BOOKING.end_timestamp, nowSec);
+    }
+
+    let newEndTimestamp = baseTimestamp;
     if (CURRENT_MODAL_BOOKING.is_hourly) {
         newEndTimestamp += (SELECTED_EXTENSION_UNITS * 3600);
     } else {
@@ -612,7 +747,13 @@ function updateExtensionCalculations() {
     document.getElementById('remNewReturnText').textContent = formattedNewEnd;
     document.getElementById('remAddedFeeText').textContent = `+₱${addedAmount.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
     document.getElementById('remUpdatedTotalText').textContent = `₱${newTotal.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-    document.getElementById('remSubmitBtn').textContent = `✓ Confirm & Extend Rental (+₱${addedAmount.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})})`;
+    
+    const submitBtn = document.getElementById('remSubmitBtn');
+    if (CURRENT_MODAL_BOOKING.is_overdue) {
+        submitBtn.textContent = `✓ Extend Rental & Settle (+₱${addedAmount.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})})`;
+    } else {
+        submitBtn.textContent = `✓ Confirm & Extend Rental (+₱${addedAmount.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})})`;
+    }
 }
 
 function closeRentalExpiryModal() {

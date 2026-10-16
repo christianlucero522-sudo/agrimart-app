@@ -107,15 +107,19 @@ if ($isHourly) {
     $currentHours = (int)($b['rental_hours'] ?: 1);
     $newRentalHours = $currentHours + $extraHours;
     
-    // Recalculate end date if hours span more than 24h
+    // If overdue, base start from today
+    $baseStart = (strtotime($b['end_date']) < strtotime(date('Y-m-d'))) ? date('Y-m-d') : $b['start_date'];
     $extraDays = (int)floor($newRentalHours / 24);
-    $newEndDate = date('Y-m-d', strtotime($b['start_date'] . " +$extraDays days"));
+    $newEndDate = date('Y-m-d', strtotime("$baseStart +$extraDays days"));
     $durationLabel = "$extraHours " . ($extraHours === 1 ? 'hour' : 'hours');
 } else {
     $extraDays = max(1, $extensionUnits);
     $addedAmount = round($extraDays * $ratePrice, 2);
     $newRentalHours = null;
-    $newEndDate = date('Y-m-d', strtotime($currentEndDate . " +$extraDays days"));
+
+    // If overdue (end_date is in past), extend from today forward so new return date is valid
+    $baseDate = (strtotime($currentEndDate) < strtotime(date('Y-m-d'))) ? date('Y-m-d') : $currentEndDate;
+    $newEndDate = date('Y-m-d', strtotime("$baseDate +$extraDays days"));
     $durationLabel = "$extraDays " . ($extraDays === 1 ? 'day' : 'days');
 }
 
