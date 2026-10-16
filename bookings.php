@@ -144,6 +144,15 @@ $stmt->close();
         <a href="bookings.php?status=cancelled" class="filter-btn <?= $statusFilter === 'cancelled' ? 'active' : '' ?>">Cancelled</a>
     </div>
 
+    <?php if (isset($_GET['extended'])): ?>
+        <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:16px 20px; margin-bottom:25px; font-weight:600; border-radius:4px; display:flex; align-items:center; gap:10px;">
+            <span style="font-size:22px;">✓</span>
+            <div>
+                <strong>Rental Extended Successfully!</strong> Your equipment rental return schedule has been updated. The owner has been notified.
+            </div>
+        </div>
+    <?php endif; ?>
+
     <?php if (empty($bookings)): ?>
         <div style="background:#fff; border:1px solid #ded6b9; padding:50px; text-align:center; border-radius:4px;">
             <h3 style="font-family:Georgia,serif; font-size:24px; margin-bottom:10px;">No rental bookings found</h3>
@@ -199,8 +208,13 @@ $stmt->close();
                         </div>
                     <?php endif; ?>
                 </div>
-                <div>
-                    <a href="booking_details.php?id=<?= (int)$b['booking_id'] ?>" class="btn btn-dark">View Details →</a>
+                <div style="display:flex; flex-direction:column; gap:8px; align-items:stretch;">
+                    <a href="booking_details.php?id=<?= (int)$b['booking_id'] ?>" class="btn btn-dark" style="text-align:center;">View Details →</a>
+                    <?php if (in_array($b['status'], ['confirmed', 'ongoing'])): ?>
+                        <button type="button" class="btn btn-solid" style="background:#1b382b; color:#fff; font-size:12px; padding:8px 12px; text-align:center; display:flex; align-items:center; justify-content:center; gap:5px; border-radius:3px; cursor:pointer;" onclick="openBookingExtension(<?= (int)$b['booking_id'] ?>)">
+                            ⏱️ Extend Rental
+                        </button>
+                    <?php endif; ?>
                 </div>
             </div>
         <?php endforeach; ?>
@@ -215,6 +229,8 @@ $stmt->close();
     </div>
 </div>
 </footer>
+
+<?php require_once 'rental_expiry_modal.php'; ?>
 
 </body>
 </html>

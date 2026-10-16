@@ -243,6 +243,15 @@ $smsStmt->close();
         </div>
     <?php endif; ?>
 
+    <?php if (isset($_GET['extended'])): ?>
+        <div style="background:#e0edd5; border:1px solid #c5ddb4; color:#23581c; padding:16px 20px; margin-bottom:25px; font-weight:600; border-radius:4px; display:flex; align-items:center; gap:10px;">
+            <span style="font-size:22px;">✓</span>
+            <div>
+                <strong>Rental Extended Successfully!</strong> Your equipment rental return schedule has been updated. The owner has been notified.
+            </div>
+        </div>
+    <?php endif; ?>
+
     <!-- OVERDUE ALERT BANNER -->
     <?php if ($isOverdue): ?>
         <div class="alert-overdue-box">
@@ -299,7 +308,7 @@ $smsStmt->close();
             <span style="font-family:monospace; color:#768047; text-transform:uppercase; letter-spacing:2px; font-size:12px; font-weight:700;">Rental Agreement</span>
             <h1 style="font-family:Georgia,serif; font-size:36px; margin:5px 0 0; color:#122017;">Booking #<?= (int)$booking['booking_id'] ?></h1>
         </div>
-        <div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <?php if ($isOverdue): ?>
                 <span class="badge badge-overdue" style="font-size:14px; padding:8px 16px;">
                     ⚠️ OVERDUE (<?= $daysLate ?> Days Late • 5% Fee)
@@ -308,6 +317,12 @@ $smsStmt->close();
                 <span class="badge badge-<?= htmlspecialchars($booking['status']) ?>" style="font-size:14px; padding:8px 16px;">
                     Status: <?= htmlspecialchars(ucfirst($booking['status'])) ?>
                 </span>
+            <?php endif; ?>
+
+            <?php if ($isRenter && in_array($booking['status'], ['confirmed', 'ongoing'])): ?>
+                <button type="button" class="btn btn-solid" style="background:#1b382b; color:#fff; font-size:13px; font-weight:700; padding:8px 16px; border-radius:4px; display:inline-flex; align-items:center; gap:6px; cursor:pointer;" onclick="openBookingExtension(<?= $bookingId ?>)">
+                    ⏱️ Extend Rental
+                </button>
             <?php endif; ?>
         </div>
     </div>
@@ -511,6 +526,21 @@ $smsStmt->close();
                 <?php endif; ?>
             </div>
 
+            <?php if ($isRenter && in_array($booking['status'], ['confirmed', 'ongoing'])): ?>
+                <div class="panel" style="background:#fefce8; border:1px solid #fef08a; border-left:4px solid #eab308; margin-top:20px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                        <span style="font-size:22px;">⏱️</span>
+                        <h3 style="margin:0; font-family:Georgia,serif; font-size:18px; color:#854d0e;">Need More Time?</h3>
+                    </div>
+                    <p style="font-size:13.5px; color:#713f12; margin:0 0 14px; line-height:1.45;">
+                        You can extend this rental anytime before completion to keep using the equipment without accumulating late penalties.
+                    </p>
+                    <button type="button" class="btn btn-solid" style="width:100%; background:#1b382b; color:#fff; padding:12px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer;" onclick="openBookingExtension(<?= $bookingId ?>)">
+                        ⏰ Extend Rental Schedule
+                    </button>
+                </div>
+            <?php endif; ?>
+
             <?php if ($booking['status'] === 'pending' && $isRenter): ?>
                 <form action="booking_details.php?id=<?= $bookingId ?>" method="POST" onsubmit="return confirm('Are you sure you want to cancel this booking request?');">
                     <input type="hidden" name="action" value="cancel_booking">
@@ -531,6 +561,8 @@ $smsStmt->close();
     </div>
 </div>
 </footer>
+
+<?php require_once 'rental_expiry_modal.php'; ?>
 
 </body>
 </html>

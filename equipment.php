@@ -1969,6 +1969,8 @@ document.addEventListener('click', function(e) {
 });
 </script>
 
+<?php require_once 'rental_expiry_modal.php'; ?>
+
 </body>
 
 </html>
