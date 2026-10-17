@@ -402,7 +402,7 @@ $isFullyVerified = ($isEmailVer === 1 && $isIdVer === 'verified' && $isFaceVer =
                                 <svg viewBox="0 0 24 24" style="width:48px; height:48px; stroke:#768047; fill:none; stroke-width:1.5; margin-bottom:10px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                                 <div>Click <strong>"Start Live Camera"</strong> below or select a file</div>
                             </div>
-                            <video id="cameraVideo" autoplay playsinline></video>
+                            <video id="cameraVideo" autoplay playsinline muted></video>
                             <img id="capturedPreview" alt="Face Selfie Preview">
                             <div class="cam-overlay-guide" id="faceGuide"></div>
                         </div>
@@ -545,54 +545,62 @@ const faceFileInput = document.getElementById('face_image_file');
 if (startCamBtn) {
     startCamBtn.addEventListener('click', async function() {
         try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('Camera is not supported or permission is blocked in this browser.');
+            }
             videoStream = await navigator.mediaDevices.getUserMedia({
                 video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
                 audio: false
             });
             cameraVideo.srcObject = videoStream;
             cameraVideo.style.display = 'block';
+            cameraVideo.play().catch(function() {});
             camPlaceholder.style.display = 'none';
             capturedPreview.style.display = 'none';
             faceGuide.style.display = 'block';
             startCamBtn.style.display = 'none';
-            snapBtn.style.display = 'inline-block';
-            retakeBtn.style.display = 'none';
+            if (snapBtn) snapBtn.style.display = 'inline-block';
+            if (retakeBtn) retakeBtn.style.display = 'none';
         } catch (err) {
             alert('Unable to access your camera: ' + err.message + '\nYou can upload a selfie photo instead.');
         }
     });
 
-    snapBtn.addEventListener('click', function() {
-        if (!cameraVideo.videoWidth) return;
-        hiddenCanvas.width = cameraVideo.videoWidth;
-        hiddenCanvas.height = cameraVideo.videoHeight;
-        const ctx = hiddenCanvas.getContext('2d');
-        // Mirror horizontally
-        ctx.translate(hiddenCanvas.width, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(cameraVideo, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
-        
-        const dataUrl = hiddenCanvas.toDataURL('image/jpeg', 0.9);
-        faceBase64Input.value = dataUrl;
-        
-        capturedPreview.src = dataUrl;
-        capturedPreview.style.display = 'block';
-        cameraVideo.style.display = 'none';
-        faceGuide.style.display = 'none';
-        snapBtn.style.display = 'none';
-        retakeBtn.style.display = 'inline-block';
+    if (snapBtn) {
+        snapBtn.addEventListener('click', function() {
+            if (!cameraVideo.videoWidth) return;
+            hiddenCanvas.width = cameraVideo.videoWidth;
+            hiddenCanvas.height = cameraVideo.videoHeight;
+            const ctx = hiddenCanvas.getContext('2d');
+            // Mirror horizontally
+            ctx.translate(hiddenCanvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(cameraVideo, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+            
+            const dataUrl = hiddenCanvas.toDataURL('image/jpeg', 0.9);
+            faceBase64Input.value = dataUrl;
+            
+            capturedPreview.src = dataUrl;
+            capturedPreview.style.display = 'block';
+            cameraVideo.style.display = 'none';
+            faceGuide.style.display = 'none';
+            snapBtn.style.display = 'none';
+            if (retakeBtn) retakeBtn.style.display = 'inline-block';
 
-        // Stop camera stream
-        if (videoStream) {
-            videoStream.getTracks().forEach(t => t.stop());
-            videoStream = null;
-        }
-    });
+            // Stop camera stream
+            if (videoStream) {
+                videoStream.getTracks().forEach(t => t.stop());
+                videoStream = null;
+            }
+        });
+    }
 
-    retakeBtn.addEventListener('click', function() {
-        faceBase64Input.value = '';
-        startCamBtn.click();
-    });
+    if (retakeBtn) {
+        retakeBtn.addEventListener('click', function() {
+            faceBase64Input.value = '';
+            startCamBtn.click();
+        });
+    }
 
     if (faceFileInput) {
         faceFileInput.addEventListener('change', function() {
@@ -604,8 +612,8 @@ if (startCamBtn) {
                     cameraVideo.style.display = 'none';
                     camPlaceholder.style.display = 'none';
                     faceGuide.style.display = 'none';
-                    snapBtn.style.display = 'none';
-                    retakeBtn.style.display = 'none';
+                    if (snapBtn) snapBtn.style.display = 'none';
+                    if (retakeBtn) retakeBtn.style.display = 'none';
                     startCamBtn.style.display = 'inline-block';
                     if (videoStream) {
                         videoStream.getTracks().forEach(t => t.stop());
@@ -615,6 +623,7 @@ if (startCamBtn) {
                 reader.readAsDataURL(this.files[0]);
             }
         });
+    }
 }
 
 function previewImageOrDoc(e, url) {
