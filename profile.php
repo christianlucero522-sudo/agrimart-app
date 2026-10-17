@@ -642,5 +642,6 @@ function previewImageOrDoc(e, url) {
 }
 </script>
 
+<?php require_once 'rental_expiry_modal.php'; ?>
 </body>
 </html>

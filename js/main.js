@@ -1,13 +1,14 @@
 /* =========================================================
    AGRIMART — FRONT-END LOGIC
-
-   Authentication:
-   PHP + MySQL
-
-   Temporary demo storage:
-   Cart, orders, and bookings still use localStorage for now.
-   These can be converted to MySQL later.
    ========================================================= */
+
+if (!window.agriResponsiveLoaded) {
+    const rScript = document.createElement('script');
+    rScript.src = 'js/responsive.js';
+    rScript.defer = true;
+    document.head.appendChild(rScript);
+    window.agriResponsiveLoaded = true;
+}
 
 
 /* =========================================================

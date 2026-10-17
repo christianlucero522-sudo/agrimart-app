@@ -126,5 +126,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </section>
 </main>
 
+<script src="js/responsive.js" defer></script>
 </body>
 </html>

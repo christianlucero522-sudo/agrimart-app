@@ -144,5 +144,6 @@ if (!empty($token)) {
     </section>
 </main>
 
+<script src="js/responsive.js" defer></script>
 </body>
 </html>

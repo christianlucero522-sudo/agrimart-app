@@ -1493,4 +1493,10 @@ body.admin-console {
     .metrics-grid {
         grid-template-columns: 1fr;
     }
+    .table-container, .table-wrap, .admin-card table {
+        display: block !important;
+        width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
 }

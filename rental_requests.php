@@ -292,5 +292,6 @@ $stmt->close();
 </div>
 </footer>
 
+<?php require_once 'rental_expiry_modal.php'; ?>
 </body>
 </html>

@@ -799,6 +799,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 </script>
+<script src="js/responsive.js" defer></script>
 <!-- ========================================================
      END RENTAL EXPIRY & EXTENSION MODAL DIALOG
 ======================================================== -->

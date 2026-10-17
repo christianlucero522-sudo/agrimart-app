@@ -2,6 +2,14 @@
  * AgriMart Real-Time Cart & UI Interactions (cart.js)
  */
 
+if (!window.agriResponsiveLoaded) {
+    const rScript = document.createElement('script');
+    rScript.src = 'js/responsive.js';
+    rScript.defer = true;
+    document.head.appendChild(rScript);
+    window.agriResponsiveLoaded = true;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     initAddToCartAjax();
     initCartQuantityAjax();

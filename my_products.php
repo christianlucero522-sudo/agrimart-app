@@ -1445,11 +1445,9 @@ function getMyProductImage($imageUrl)
 
 
 <?php
-
 $stmt->close();
-
+require_once 'rental_expiry_modal.php';
 $conn->close();
-
 ?>
 
 

@@ -1561,7 +1561,7 @@ function getCheckoutImage($imageUrl)
 
 </footer>
 
-
+<script src="js/responsive.js" defer></script>
 </body>
 
 </html>

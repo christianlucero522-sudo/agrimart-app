@@ -186,5 +186,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 </footer>
 
+<?php require_once 'rental_expiry_modal.php'; ?>
 </body>
 </html>

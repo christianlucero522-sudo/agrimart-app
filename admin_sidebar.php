@@ -53,31 +53,71 @@ body.admin-console {
     min-height: 100vh !important;
     color: #18241d !important;
 }
-.admin-sidebar {
-    width: 250px !important;
-    min-width: 250px !important;
-    max-width: 250px !important;
-    background: #13382c !important;
-    color: #ffffff !important;
-    height: 100vh !important;
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
-    padding: 24px 16px 20px !important;
-    box-sizing: border-box !important;
-    z-index: 1000 !important;
+@media (min-width: 901px) {
+    .admin-sidebar {
+        width: 250px !important;
+        min-width: 250px !important;
+        max-width: 250px !important;
+        background: #13382c !important;
+        color: #ffffff !important;
+        height: 100vh !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        padding: 24px 16px 20px !important;
+        box-sizing: border-box !important;
+        z-index: 1000 !important;
+    }
+    .admin-main {
+        margin-left: 250px !important;
+        width: calc(100% - 250px) !important;
+        max-width: calc(100% - 250px) !important;
+        padding: 32px 36px 60px !important;
+        box-sizing: border-box !important;
+        background: #f6f4ee !important;
+        min-height: 100vh !important;
+    }
 }
-.admin-main {
-    margin-left: 250px !important;
-    width: calc(100% - 250px) !important;
-    max-width: calc(100% - 250px) !important;
-    padding: 32px 36px 60px !important;
-    box-sizing: border-box !important;
-    background: #f6f4ee !important;
-    min-height: 100vh !important;
+@media (max-width: 900px) {
+    .admin-sidebar {
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        background: #13382c !important;
+        position: relative !important;
+        height: auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        padding: 16px 18px !important;
+        box-sizing: border-box !important;
+        z-index: 1000 !important;
+    }
+    .admin-main {
+        margin-left: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 20px 16px 60px !important;
+        box-sizing: border-box !important;
+    }
+    .sidebar-menu {
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        padding-bottom: 6px !important;
+    }
+    .sidebar-item {
+        padding: 7px 12px !important;
+        font-size: 12px !important;
+        white-space: nowrap !important;
+    }
+    .admin-user-pill {
+        margin-top: 10px !important;
+    }
 }
 .sidebar-icon {
     width: 18px !important;
@@ -257,3 +297,4 @@ body.admin-console {
         </div>
     </div>
 </aside>
+<script src="js/responsive.js" defer></script>
