@@ -54,7 +54,7 @@ if (!$connected) {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>AgriMart — Database Setup Required</title>
+        <title>AgriMart — Database Connection Error</title>
         <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f4f0df; color: #162018; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 25px; }
@@ -77,6 +77,37 @@ if (!$connected) {
     </head>
     <body>
         <div class="setup-card">
+        <?php if (!$isVercel): ?>
+            <span class="badge">Local MySQL Stopped</span>
+            <h1>🌾 Start XAMPP MySQL Service</h1>
+            <p>
+                AgriMart could not connect to your local MySQL database (<code>127.0.0.1:3306</code>). The MySQL module in your XAMPP Control Panel is currently stopped.
+            </p>
+
+            <div class="error-box">
+                <strong>Connection Error:</strong> <?= htmlspecialchars($connError) ?> (Target: <?= htmlspecialchars($host . ':' . $port . ' / ' . $database) ?>)
+            </div>
+
+            <div class="steps-container">
+                <h3>🛠️ How to fix on Localhost:</h3>
+                <div class="step-item">
+                    <div class="step-num">1</div>
+                    <div>Open the <strong>XAMPP Control Panel</strong> on your computer.</div>
+                </div>
+                <div class="step-item">
+                    <div class="step-num">2</div>
+                    <div>Click the <strong>Start</strong> button next to <strong>MySQL</strong>.</div>
+                </div>
+                <div class="step-item">
+                    <div class="step-num">3</div>
+                    <div>Refresh this page once MySQL turns green with port 3306.</div>
+                </div>
+            </div>
+
+            <div>
+                <a href="javascript:location.reload()" class="action-btn">🔄 Retry Connection</a>
+            </div>
+        <?php else: ?>
             <span class="badge">Cloud Database Configuration Required</span>
             <h1>🌾 Connect AgriMart to Cloud MySQL</h1>
             <p>
@@ -150,6 +181,7 @@ if (!$connected) {
                 <span style="font-size:12px; color:#888;">After adding environment variables, trigger a <strong>Redeploy</strong> in Vercel.</span>
                 <a href="https://vercel.com/dashboard" target="_blank" class="action-btn">Open Vercel Dashboard &rarr;</a>
             </div>
+        <?php endif; ?>
         </div>
     </body>
     </html>
@@ -216,6 +248,7 @@ if (!$schemaChecked) {
 }
 
 require_once __DIR__ . '/sms_helper.php';
+require_once __DIR__ . '/image_helper.php';
 
 /**
  * Automatically synchronize user verification and account records between local XAMPP and Clever Cloud.

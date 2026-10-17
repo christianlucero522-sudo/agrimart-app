@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AgriMart Real-Time Cart & UI Interactions (cart.js)
  */
 
@@ -137,14 +137,22 @@ function initCartQuantityAjax() {
             const formData = new FormData(form);
             formData.append('ajax', '1');
 
-            // Explicitly capture submit button name & value
+            // Explicitly capture submit button name & value or hidden action field
             const submitter = e.submitter;
-            if (submitter && submitter.name && submitter.value) {
-                formData.set(submitter.name, submitter.value);
+            const actionHiddenInput = form.querySelector('.cart-action-val');
+            let actionVal = actionHiddenInput ? actionHiddenInput.value : '';
+
+            if (submitter && submitter.name === 'action' && submitter.value) {
+                actionVal = submitter.value;
+                if (actionHiddenInput) actionHiddenInput.value = actionVal;
+            }
+
+            if (actionVal) {
+                formData.set('action', actionVal);
             }
 
             const cartRow = form.closest('.cart-item, [data-cart-row], article');
-            const clickedBtn = submitter;
+            const clickedBtn = submitter || (actionVal === 'remove' ? form.querySelector('.cart-remove-btn') : form.querySelector('.cart-update-btn'));
             if (clickedBtn) {
                 clickedBtn.disabled = true;
                 clickedBtn.style.opacity = '0.6';
@@ -201,7 +209,7 @@ function initCartQuantityAjax() {
                     }
 
                     // Update Grand Totals and Item Counts in Order Summary
-                    const summaryTotalEls = document.querySelectorAll('.summary-total strong, .cart-total-amount, #cartTotal');
+                    const summaryTotalEls = document.querySelectorAll('.summary-total strong, .cart-total-amount, #cartTotal, #cartTotalAmount');
                     summaryTotalEls.forEach(el => el.textContent = data.cart_total);
 
                     const summaryItemsEl = document.getElementById('summaryItemsCount');

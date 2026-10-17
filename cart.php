@@ -1140,18 +1140,22 @@ function getCartProductImage($imageUrl)
                                 class="cart-update-form"
                             >
 
-
                                 <input
                                     type="hidden"
                                     name="cart_item_id"
                                     value="<?= (int) $item['cart_item_id'] ?>"
                                 >
 
+                                <input
+                                    type="hidden"
+                                    name="action"
+                                    value="update"
+                                    class="cart-action-val"
+                                >
 
                                 <label>
                                     Quantity
                                 </label>
-
 
                                 <input
                                     type="number"
@@ -1163,16 +1167,15 @@ function getCartProductImage($imageUrl)
                                     required
                                 >
 
-
                                 <button
                                     type="submit"
                                     name="action"
                                     value="update"
                                     class="cart-update-btn"
+                                    onclick="var f=this.closest('form'); if(f) f.querySelector('.cart-action-val').value='update';"
                                 >
                                     Update
                                 </button>
-
 
                                 <button
                                     type="submit"
@@ -1180,10 +1183,10 @@ function getCartProductImage($imageUrl)
                                     value="remove"
                                     class="cart-remove-btn"
                                     formnovalidate
+                                    onclick="var f=this.closest('form'); if(f) f.querySelector('.cart-action-val').value='remove';"
                                 >
                                     Remove
                                 </button>
-
 
                             </form>
 

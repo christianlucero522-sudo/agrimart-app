@@ -65,18 +65,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $rateType = ($catRow['rental_rate_type'] ?? '') === 'hourly' ? 'hourly' : 'daily';
         $imageUrl = $equipment['image_url'];
         if (isset($_FILES['equipment_image']) && $_FILES['equipment_image']['error'] === UPLOAD_ERR_OK) {
-            $tmp = $_FILES['equipment_image']['tmp_name'];
-            $orig = basename($_FILES['equipment_image']['name']);
-            $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
-            $allowed = ['jpg', 'jpeg', 'png', 'webp', 'svg'];
-            
-            if (in_array($ext, $allowed)) {
-                $uploadDir = __DIR__ . '/uploads/equipment/';
-                if (!is_dir($uploadDir)) @mkdir($uploadDir, 0777, true);
-                $newFilename = 'equip_' . time() . '_' . rand(100, 999) . '.' . $ext;
-                if (move_uploaded_file($tmp, $uploadDir . $newFilename)) {
-                    $imageUrl = 'uploads/equipment/' . $newFilename;
-                }
+            $uploadResult = saveUploadedImage($_FILES['equipment_image'], 'equipment');
+            if ($uploadResult['success'] && !empty($uploadResult['path'])) {
+                $imageUrl = $uploadResult['path'];
             }
         }
 

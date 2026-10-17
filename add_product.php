@@ -246,137 +246,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $imagePath = null;
 
-
     if (
         $errorMessage === '' &&
         isset($_FILES['product_image']) &&
-        $_FILES['product_image']['error']
-            !== UPLOAD_ERR_NO_FILE
+        $_FILES['product_image']['error'] !== UPLOAD_ERR_NO_FILE
     ) {
-
-
-        if (
-            $_FILES['product_image']['error']
-            !== UPLOAD_ERR_OK
-        ) {
-
-            $errorMessage =
-                'Unable to upload image.';
-
+        $uploadResult = saveUploadedImage($_FILES['product_image'], 'products');
+        if (!$uploadResult['success']) {
+            $errorMessage = $uploadResult['error'] ?? 'Failed to save product image.';
         } else {
-
-
-            $allowedMimeTypes = [
-
-                'image/jpeg' => 'jpg',
-
-                'image/png' => 'png',
-
-                'image/webp' => 'webp'
-
-            ];
-
-
-            $tmpName =
-                $_FILES['product_image']['tmp_name'];
-
-
-            $fileInfo =
-                new finfo(
-                    FILEINFO_MIME_TYPE
-                );
-
-
-            $mimeType =
-                $fileInfo->file(
-                    $tmpName
-                );
-
-
-            if (
-                !isset(
-                    $allowedMimeTypes[
-                        $mimeType
-                    ]
-                )
-            ) {
-
-                $errorMessage =
-                    'Only JPG, PNG, and WEBP images are allowed.';
-
-            } elseif (
-                $_FILES['product_image']['size']
-                > 5 * 1024 * 1024
-            ) {
-
-                $errorMessage =
-                    'Image must be 5 MB or smaller.';
-
-            } else {
-
-
-                $uploadDirectory =
-                    __DIR__
-                    . '/uploads/products/';
-
-
-                if (
-                    !is_dir(
-                        $uploadDirectory
-                    )
-                ) {
-
-                    mkdir(
-                        $uploadDirectory,
-                        0755,
-                        true
-                    );
-
-                }
-
-
-                $extension =
-                    $allowedMimeTypes[
-                        $mimeType
-                    ];
-
-
-                $fileName =
-                    bin2hex(
-                        random_bytes(16)
-                    )
-                    . '.'
-                    . $extension;
-
-
-                $destination =
-                    $uploadDirectory
-                    . $fileName;
-
-
-                if (
-                    !move_uploaded_file(
-                        $tmpName,
-                        $destination
-                    )
-                ) {
-
-                    $errorMessage =
-                        'Failed to save product image.';
-
-                } else {
-
-
-                    $imagePath =
-                        'uploads/products/'
-                        . $fileName;
-
-                }
-
-            }
-
+            $imagePath = $uploadResult['path'];
         }
-
     }
 
 

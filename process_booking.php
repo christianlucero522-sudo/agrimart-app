@@ -39,17 +39,9 @@ if ($equipmentId <= 0 || empty($startDate) || empty($endDate) || empty($pickupLo
 // Handle Payment Proof Receipt Upload
 $paymentProofPath = null;
 if (isset($_FILES['payment_proof']) && $_FILES['payment_proof']['error'] === UPLOAD_ERR_OK) {
-    $tmpName = $_FILES['payment_proof']['tmp_name'];
-    $origName = basename($_FILES['payment_proof']['name']);
-    $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
-    $allowed = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
-
-    if (in_array($ext, $allowed)) {
-        $filename = 'pay_booking_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
-        $destPath = __DIR__ . '/uploads/payments/' . $filename;
-        if (move_uploaded_file($tmpName, $destPath)) {
-            $paymentProofPath = 'uploads/payments/' . $filename;
-        }
+    $uploadResult = saveUploadedImage($_FILES['payment_proof'], 'payments');
+    if ($uploadResult['success'] && !empty($uploadResult['path'])) {
+        $paymentProofPath = $uploadResult['path'];
     }
 }
 

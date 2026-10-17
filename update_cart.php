@@ -1,4 +1,5 @@
-﻿<?php
+<?php
+// update_cart.php - Handle Cart Quantity Updates and Item Removal
 session_start();
 require_once 'config.php';
 
@@ -128,19 +129,22 @@ if ($action === 'remove') {
         $uStmt->bind_param('ii', $newItemQty, $cartItemId);
         $uStmt->execute();
         $uStmt->close();
-        $message = "Cart updated.";
+        $message = "Cart quantity updated successfully.";
     }
 }
 
-// Calculate Total Cart Values
+// Calculate Total Cart Values matching cart.php
 $calcSql = "
     SELECT 
         COALESCE(SUM(ci.quantity), 0) AS total_count,
         COUNT(ci.cart_item_id) AS total_products,
         COALESCE(SUM(ci.quantity * p.price), 0.00) AS cart_total
     FROM cart_items ci
+    INNER JOIN cart c ON ci.cart_id = c.cart_id
     INNER JOIN products p ON ci.product_id = p.product_id
     WHERE ci.cart_id = ?
+      AND p.status = 'active'
+      AND p.user_id != c.user_id
 ";
 $cStmt = $conn->prepare($calcSql);
 $cStmt->bind_param('i', $cartId);
@@ -169,5 +173,9 @@ if ($isAjax) {
     exit;
 }
 
-header('Location: cart.php');
+if ($itemRemoved) {
+    header('Location: cart.php?removed=1');
+} else {
+    header('Location: cart.php?updated=1');
+}
 exit;
