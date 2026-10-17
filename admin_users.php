@@ -241,7 +241,7 @@ include __DIR__ . '/admin_sidebar.php';
                                     <small style="color:#777;">No: <?= htmlspecialchars($u['id_number'] ?? 'N/A') ?></small><br>
                                 <?php endif; ?>
                                 <?php if (!empty($u['id_card_image'])): ?>
-                                    <a href="<?= htmlspecialchars($u['id_card_image']) ?>" target="_blank" class="btn btn-light" style="padding:2px 8px; font-size:11px; margin-top:4px; display:inline-block;">
+                                    <a href="<?= htmlspecialchars($u['id_card_image']) ?>" target="_blank" onclick="previewImageOrDoc(event, this.href)" class="btn btn-light" style="padding:2px 8px; font-size:11px; margin-top:4px; display:inline-block;">
                                         🔍 View ID Card
                                     </a>
                                 <?php else: ?>
@@ -252,7 +252,7 @@ include __DIR__ . '/admin_sidebar.php';
                                 <?php if (!empty($u['face_image'])): ?>
                                     <div style="display:flex; align-items:center; gap:8px;">
                                         <img src="<?= htmlspecialchars($u['face_image']) ?>" alt="Face Selfie" style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:1px solid #768047;">
-                                        <a href="<?= htmlspecialchars($u['face_image']) ?>" target="_blank" class="btn btn-light" style="padding:2px 8px; font-size:11px;">
+                                        <a href="<?= htmlspecialchars($u['face_image']) ?>" target="_blank" onclick="previewImageOrDoc(event, this.href)" class="btn btn-light" style="padding:2px 8px; font-size:11px;">
                                             🔍 View Face
                                         </a>
                                     </div>
@@ -346,5 +346,21 @@ include __DIR__ . '/admin_sidebar.php';
     </div>
 </div>
 </main>
+<script>
+function previewImageOrDoc(e, url) {
+    if (url && url.startsWith('data:')) {
+        e.preventDefault();
+        const w = window.open('');
+        if (w) {
+            if (url.startsWith('data:application/pdf')) {
+                w.document.write('<html><head><title>Document Preview</title><style>body{margin:0;}</style></head><body><iframe src="' + url + '" style="width:100%;height:100vh;border:none;"></iframe></body></html>');
+            } else {
+                w.document.write('<html><head><title>Biometrics Preview</title><style>body{margin:0;background:#0d2818;display:flex;align-items:center;justify-content:center;height:100vh;}</style></head><body><img src="' + url + '" style="max-width:95%;max-height:95%;box-shadow:0 10px 30px rgba(0,0,0,0.5);border-radius:4px;"></body></html>');
+            }
+            w.document.close();
+        }
+    }
+}
+</script>
 </body>
 </html>

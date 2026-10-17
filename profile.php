@@ -88,52 +88,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Handle Valid ID Upload
         $idImagePath = null;
         if (isset($_FILES['id_card_image']) && $_FILES['id_card_image']['error'] === UPLOAD_ERR_OK) {
-            $tmpName = $_FILES['id_card_image']['tmp_name'];
-            $origName = basename($_FILES['id_card_image']['name']);
-            $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
-            $allowed = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
-
-            if (in_array($ext, $allowed)) {
-                $filename = 'id_' . $userId . '_' . time() . '.' . $ext;
-                $destDir = __DIR__ . '/uploads/identifications/';
-                if (!is_dir($destDir)) @mkdir($destDir, 0777, true);
-                if (move_uploaded_file($tmpName, $destDir . $filename)) {
-                    $idImagePath = 'uploads/identifications/' . $filename;
-                    $hasIdUpdate = true;
-                }
+            $idUpload = saveUploadedImage($_FILES['id_card_image'], 'identifications');
+            if ($idUpload['success'] && !empty($idUpload['path'])) {
+                $idImagePath = $idUpload['path'];
+                $hasIdUpdate = true;
+            } else {
+                $error = $idUpload['error'] ?? 'Failed to process ID card image.';
             }
         }
 
         // Handle Face Selfie (Base64 from live webcam OR file upload)
         $faceImagePath = null;
         if (!empty($faceBase64) && strpos($faceBase64, 'data:image') === 0) {
-            $parts = explode(',', $faceBase64);
-            if (count($parts) === 2) {
-                $decoded = base64_decode($parts[1]);
-                if ($decoded) {
-                    $destDir = __DIR__ . '/uploads/faces/';
-                    if (!is_dir($destDir)) @mkdir($destDir, 0777, true);
-                    $filename = 'face_' . $userId . '_' . time() . '.jpg';
-                    if (file_put_contents($destDir . $filename, $decoded)) {
-                        $faceImagePath = 'uploads/faces/' . $filename;
-                        $hasFaceUpdate = true;
-                    }
-                }
+            $faceUpload = saveBase64Image($faceBase64, 'faces', 'face_' . $userId . '_');
+            if ($faceUpload['success'] && !empty($faceUpload['path'])) {
+                $faceImagePath = $faceUpload['path'];
+                $hasFaceUpdate = true;
+            } else {
+                $error = $faceUpload['error'] ?? 'Failed to process face biometric photo.';
             }
         } elseif (isset($_FILES['face_image_file']) && $_FILES['face_image_file']['error'] === UPLOAD_ERR_OK) {
-            $tmpName = $_FILES['face_image_file']['tmp_name'];
-            $origName = basename($_FILES['face_image_file']['name']);
-            $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
-            $allowed = ['jpg', 'jpeg', 'png', 'webp'];
-
-            if (in_array($ext, $allowed)) {
-                $filename = 'face_' . $userId . '_' . time() . '.' . $ext;
-                $destDir = __DIR__ . '/uploads/faces/';
-                if (!is_dir($destDir)) @mkdir($destDir, 0777, true);
-                if (move_uploaded_file($tmpName, $destDir . $filename)) {
-                    $faceImagePath = 'uploads/faces/' . $filename;
-                    $hasFaceUpdate = true;
-                }
+            $faceUpload = saveUploadedImage($_FILES['face_image_file'], 'faces');
+            if ($faceUpload['success'] && !empty($faceUpload['path'])) {
+                $faceImagePath = $faceUpload['path'];
+                $hasFaceUpdate = true;
+            } else {
+                $error = $faceUpload['error'] ?? 'Failed to process uploaded face photo.';
             }
         }
 
@@ -330,8 +310,11 @@ $isFullyVerified = ($isEmailVer === 1 && $isIdVer === 'verified' && $isFaceVer =
                     </div>
                 </div>
                 <?php if (!empty($user['id_card_image'])): ?>
-                    <div style="margin-top:10px;">
-                        <a href="<?= htmlspecialchars($user['id_card_image']) ?>" target="_blank" style="font-size:11px; color:#2e5927; font-weight:600; text-decoration:underline;">
+                    <div style="margin-top:10px; display:flex; align-items:center; gap:8px;">
+                        <?php if (strpos($user['id_card_image'], 'data:image') === 0 || preg_match('/\.(jpg|jpeg|png|webp)$/i', $user['id_card_image'])): ?>
+                            <img src="<?= htmlspecialchars($user['id_card_image']) ?>" alt="ID Document" style="width:36px; height:24px; object-fit:cover; border-radius:2px; border:1px solid #768047;">
+                        <?php endif; ?>
+                        <a href="<?= htmlspecialchars($user['id_card_image']) ?>" target="_blank" onclick="previewImageOrDoc(event, this.href)" style="font-size:11px; color:#2e5927; font-weight:600; text-decoration:underline;">
                             🔍 View Uploaded ID Document
                         </a>
                     </div>
@@ -358,8 +341,9 @@ $isFullyVerified = ($isEmailVer === 1 && $isIdVer === 'verified' && $isFaceVer =
                     </div>
                 </div>
                 <?php if (!empty($user['face_image'])): ?>
-                    <div style="margin-top:10px;">
-                        <a href="<?= htmlspecialchars($user['face_image']) ?>" target="_blank" style="font-size:11px; color:#2e5927; font-weight:600; text-decoration:underline;">
+                    <div style="margin-top:10px; display:flex; align-items:center; gap:8px;">
+                        <img src="<?= htmlspecialchars($user['face_image']) ?>" alt="Face Selfie" style="width:32px; height:32px; border-radius:50%; object-fit:cover; border:1px solid #768047;">
+                        <a href="<?= htmlspecialchars($user['face_image']) ?>" target="_blank" onclick="previewImageOrDoc(event, this.href)" style="font-size:11px; color:#2e5927; font-weight:600; text-decoration:underline;">
                             🔍 View Stored Face Selfie
                         </a>
                     </div>
@@ -631,6 +615,20 @@ if (startCamBtn) {
                 reader.readAsDataURL(this.files[0]);
             }
         });
+}
+
+function previewImageOrDoc(e, url) {
+    if (url && url.startsWith('data:')) {
+        e.preventDefault();
+        const w = window.open('');
+        if (w) {
+            if (url.startsWith('data:application/pdf')) {
+                w.document.write('<html><head><title>Document Preview</title><style>body{margin:0;}</style></head><body><iframe src="' + url + '" style="width:100%;height:100vh;border:none;"></iframe></body></html>');
+            } else {
+                w.document.write('<html><head><title>Biometrics Preview</title><style>body{margin:0;background:#0d2818;display:flex;align-items:center;justify-content:center;height:100vh;}</style></head><body><img src="' + url + '" style="max-width:95%;max-height:95%;box-shadow:0 10px 30px rgba(0,0,0,0.5);border-radius:4px;"></body></html>');
+            }
+            w.document.close();
+        }
     }
 }
 </script>

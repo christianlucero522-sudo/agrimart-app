@@ -264,7 +264,7 @@ function syncUserVerificationWithCloud($email, $conn) {
     try {
         $cloudConn = @new mysqli('blpcpqtohlaqhpgy6nte-mysql.services.clever-cloud.com', 'ui0fiyieoo7h6gn8', 'yVyYoZcZjbLv0XlWzhYd', 'blpcpqtohlaqhpgy6nte', 3306);
         if ($cloudConn && !$cloudConn->connect_error) {
-            $stmt = $cloudConn->prepare("SELECT user_id, full_name, email, phone, password, role, is_verified, face_verified, status, email_verified FROM users WHERE email = ? LIMIT 1");
+            $stmt = $cloudConn->prepare("SELECT user_id, full_name, email, phone, password, role, is_verified, face_verified, status, email_verified, id_type, id_number, id_card_image, face_image FROM users WHERE email = ? LIMIT 1");
             if ($stmt) {
                 $stmt->bind_param('s', $email);
                 $stmt->execute();
@@ -272,25 +272,51 @@ function syncUserVerificationWithCloud($email, $conn) {
                 $stmt->close();
 
                 if ($cUser) {
-                    $lStmt = $conn->prepare("SELECT user_id, email_verified FROM users WHERE email = ? LIMIT 1");
+                    $lStmt = $conn->prepare("SELECT user_id, email_verified, is_verified, face_verified FROM users WHERE email = ? LIMIT 1");
                     $lStmt->bind_param('s', $email);
                     $lStmt->execute();
                     $lUser = $lStmt->get_result()->fetch_assoc();
                     $lStmt->close();
 
                     if ($lUser) {
-                        // User exists locally: if cloud is verified, sync verified state to local DB
-                        if ((int)$cUser['email_verified'] === 1 && (int)$lUser['email_verified'] === 0) {
-                            $up = $conn->prepare("UPDATE users SET email_verified = 1, email_verification_token = NULL WHERE user_id = ?");
-                            $up->bind_param('i', $lUser['user_id']);
+                        // User exists locally: sync verification state and KYC documents from cloud
+                        $up = $conn->prepare("UPDATE users SET 
+                            email_verified = GREATEST(email_verified, ?),
+                            is_verified = CASE WHEN ? = 'verified' THEN 'verified' WHEN ? = 'pending' AND is_verified != 'verified' THEN 'pending' ELSE is_verified END,
+                            face_verified = CASE WHEN ? = 'verified' THEN 'verified' WHEN ? = 'pending' AND face_verified != 'verified' THEN 'pending' ELSE face_verified END,
+                            id_type = CASE WHEN ? IS NOT NULL AND ? != '' THEN ? ELSE id_type END,
+                            id_number = CASE WHEN ? IS NOT NULL AND ? != '' THEN ? ELSE id_number END,
+                            id_card_image = CASE WHEN ? IS NOT NULL AND ? != '' THEN ? ELSE id_card_image END,
+                            face_image = CASE WHEN ? IS NOT NULL AND ? != '' THEN ? ELSE face_image END
+                            WHERE user_id = ?");
+                        if ($up) {
+                            $emailVer = (int)$cUser['email_verified'];
+                            $idVer = $cUser['is_verified'] ?? 'pending';
+                            $faceVer = $cUser['face_verified'] ?? 'pending';
+                            $idType = $cUser['id_type'];
+                            $idNum = $cUser['id_number'];
+                            $idImg = $cUser['id_card_image'];
+                            $faceImg = $cUser['face_image'];
+                            $lUid = (int)$lUser['user_id'];
+
+                            $up->bind_param('isssssssssssssi', 
+                                $emailVer,
+                                $idVer, $idVer,
+                                $faceVer, $faceVer,
+                                $idType, $idType, $idType,
+                                $idNum, $idNum, $idNum,
+                                $idImg, $idImg, $idImg,
+                                $faceImg, $faceImg, $faceImg,
+                                $lUid
+                            );
                             $up->execute();
                             $up->close();
                         }
                     } else {
                         // User was registered on Vercel: replicate user locally so they can log in seamlessly on localhost
-                        $ins = $conn->prepare("INSERT INTO users (full_name, email, phone, password, role, is_verified, face_verified, status, email_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                        $ins = $conn->prepare("INSERT INTO users (full_name, email, phone, password, role, is_verified, face_verified, status, email_verified, id_type, id_number, id_card_image, face_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                         if ($ins) {
-                            $ins->bind_param('ssssssssi', $cUser['full_name'], $cUser['email'], $cUser['phone'], $cUser['password'], $cUser['role'], $cUser['is_verified'], $cUser['face_verified'], $cUser['status'], $cUser['email_verified']);
+                            $ins->bind_param('ssssssssissss', $cUser['full_name'], $cUser['email'], $cUser['phone'], $cUser['password'], $cUser['role'], $cUser['is_verified'], $cUser['face_verified'], $cUser['status'], $cUser['email_verified'], $cUser['id_type'], $cUser['id_number'], $cUser['id_card_image'], $cUser['face_image']);
                             $ins->execute();
                             $ins->close();
                         }
