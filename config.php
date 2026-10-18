@@ -41,6 +41,10 @@ if (!$connected) {
     if ($host === '127.0.0.1' || $host === 'localhost') {
         $connected = @$conn->real_connect('localhost', $user, $password, $database, $port);
     }
+    // Fallback to Clever Cloud if local MySQL is down
+    if (!$connected) {
+        $connected = @$conn->real_connect('blpcpqtohlaqhpgy6nte-mysql.services.clever-cloud.com', 'ui0fiyieoo7h6gn8', 'yVyYoZcZjbLv0XlWzhYd', 'blpcpqtohlaqhpgy6nte', 3306);
+    }
 }
 
 if (!$connected) {
@@ -243,6 +247,19 @@ if (!$schemaChecked) {
         if (!in_array('rental_rate_type', $cCols)) {
             @$conn->query("ALTER TABLE categories ADD COLUMN rental_rate_type ENUM('daily', 'hourly') NOT NULL DEFAULT 'daily' AFTER category_type");
             @$conn->query("UPDATE categories SET rental_rate_type = 'hourly' WHERE category_type = 'equipment' AND (LOWER(category_name) LIKE '%pump%' OR LOWER(category_name) LIKE '%irrigation%' OR LOWER(category_name) LIKE '%sprayer%')");
+        }
+    }
+
+    // Check users columns
+    $uCols = [];
+    $uRes = @$conn->query("SHOW COLUMNS FROM users");
+    if ($uRes) {
+        while ($r = $uRes->fetch_assoc()) { $uCols[] = $r['Field']; }
+        if (!in_array('oauth_provider', $uCols)) {
+            @$conn->query("ALTER TABLE users ADD COLUMN oauth_provider VARCHAR(50) NULL DEFAULT NULL AFTER email_verified");
+        }
+        if (!in_array('oauth_id', $uCols)) {
+            @$conn->query("ALTER TABLE users ADD COLUMN oauth_id VARCHAR(150) NULL DEFAULT NULL AFTER oauth_provider");
         }
     }
 }

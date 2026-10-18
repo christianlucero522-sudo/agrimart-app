@@ -547,6 +547,8 @@ CREATE TABLE `users` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `email_verification_token` varchar(100) DEFAULT NULL,
   `email_verified` tinyint(1) DEFAULT 1,
+  `oauth_provider` varchar(50) DEFAULT NULL,
+  `oauth_id` varchar(150) DEFAULT NULL,
   `face_image` varchar(255) DEFAULT NULL,
   `face_verified` enum('pending','verified','rejected') DEFAULT 'pending',
   PRIMARY KEY (`user_id`),
