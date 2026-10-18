@@ -179,6 +179,59 @@ body {
     margin-bottom: 22px;
 }
 
+/* Centered Social Icon Row (Logos Only) */
+.social-icon-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    margin: 18px 0 22px;
+}
+
+.btn-social-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #d4c79c;
+    background: #ffffff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    cursor: pointer;
+    text-decoration: none !important;
+}
+
+.btn-social-icon:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+}
+
+.btn-social-icon svg {
+    width: 22px;
+    height: 22px;
+    display: block;
+    flex-shrink: 0;
+}
+
+.btn-social-icon.btn-google:hover {
+    border-color: #4285F4;
+    background: #ffffff;
+    box-shadow: 0 6px 14px rgba(66, 133, 244, 0.25);
+}
+
+.btn-social-icon.btn-facebook {
+    background: #1877F2;
+    border-color: #1877F2;
+}
+
+.btn-social-icon.btn-facebook:hover {
+    background: #166fe5;
+    border-color: #166fe5;
+    box-shadow: 0 6px 14px rgba(24, 119, 242, 0.35);
+}
+
 .btn-social {
     display: flex;
     align-items: center;
