@@ -49,8 +49,8 @@ $unreadNotifs = (int)($conn->query("SELECT COUNT(*) AS c FROM notifications WHER
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard — AgriMart</title>
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/style.css?v=<?= file_exists(__DIR__ . '/css/style.css') ? filemtime(__DIR__ . '/css/style.css') : '2.1' ?>">
+    <link rel="stylesheet" href="css/dashboard.css?v=<?= file_exists(__DIR__ . '/css/dashboard.css') ? filemtime(__DIR__ . '/css/dashboard.css') : '2.1' ?>">
 </head>
 <body class="dashboard-body">
 

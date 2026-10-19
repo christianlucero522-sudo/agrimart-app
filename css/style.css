@@ -664,6 +664,13 @@ section{ padding:96px 0; }
   border-collapse: collapse;
 }
 
+/* Mobile-only elements strictly hidden on desktop */
+.agri-nav-toggle,
+.mobile-user-row,
+.mobile-actions-row {
+  display: none !important;
+}
+
 /* Medium Screens & Tablets (<= 900px) */
 @media (max-width: 900px) {
   .site-header {

@@ -31,6 +31,8 @@
             toggleBtn.setAttribute('aria-expanded', 'false');
             toggleBtn.innerHTML = '<span></span><span></span><span></span>';
 
+            toggleBtn.style.setProperty('display', 'none', 'important');
+
             const headerActions = header.querySelector('.header-actions');
             if (headerActions) {
                 headerActions.appendChild(toggleBtn);
@@ -48,6 +50,7 @@
             if (userChip) {
                 const userRow = document.createElement('div');
                 userRow.className = 'mobile-user-row';
+                userRow.style.setProperty('display', 'none', 'important');
                 userRow.innerHTML = userChip.innerHTML;
                 mainNav.prepend(userRow);
             }
@@ -55,14 +58,41 @@
             if (actionBtns && actionBtns.length > 0) {
                 const actRow = document.createElement('div');
                 actRow.className = 'mobile-actions-row';
+                actRow.style.setProperty('display', 'none', 'important');
                 actionBtns.forEach(btn => {
                     const clone = btn.cloneNode(true);
-                    clone.style.display = 'inline-flex';
                     actRow.appendChild(clone);
                 });
                 mainNav.appendChild(actRow);
             }
         }
+
+        // Sync visibility on load and viewport resize
+        function syncMobileNavVisibility() {
+            const isMobile = window.innerWidth <= 900;
+            if (toggleBtn) {
+                toggleBtn.style.setProperty('display', isMobile ? 'flex' : 'none', 'important');
+            }
+            const uRow = mainNav.querySelector('.mobile-user-row');
+            if (uRow) {
+                uRow.style.setProperty('display', isMobile ? 'flex' : 'none', 'important');
+            }
+            const aRow = mainNav.querySelector('.mobile-actions-row');
+            if (aRow) {
+                aRow.style.setProperty('display', isMobile ? 'flex' : 'none', 'important');
+            }
+            if (!isMobile) {
+                mainNav.classList.remove('is-open');
+                if (toggleBtn) {
+                    toggleBtn.classList.remove('is-active');
+                    toggleBtn.setAttribute('aria-expanded', 'false');
+                }
+                document.body.classList.remove('mobile-nav-locked');
+            }
+        }
+
+        syncMobileNavVisibility();
+        window.addEventListener('resize', syncMobileNavVisibility);
 
         // Toggle Drawer
         toggleBtn.addEventListener('click', function(e) {

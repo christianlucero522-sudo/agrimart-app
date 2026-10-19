@@ -242,15 +242,27 @@ $isOwner =
 
     <link
         rel="stylesheet"
-        href="css/style.css"
+        href="css/style.css?v=<?= file_exists(__DIR__ . '/css/style.css') ? filemtime(__DIR__ . '/css/style.css') : '2.1' ?>"
     >
 
 
     <style>
 
         /* =====================================================
-           HEADER
+           HEADER & RESPONSIVE NAVIGATION
         ===================================================== */
+
+        .agri-nav-toggle,
+        .mobile-user-row,
+        .mobile-actions-row {
+            display: none !important;
+        }
+
+        @media (max-width: 900px) {
+            .agri-nav-toggle { display: flex !important; }
+            .mobile-user-row { display: flex !important; }
+            .mobile-actions-row { display: flex !important; }
+        }
 
         .site-header {
             background: var(--forest-950) !important;
