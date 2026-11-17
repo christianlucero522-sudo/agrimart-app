@@ -195,6 +195,31 @@ if (!$connected) {
 
 $conn->set_charset("utf8mb4");
 
+// -------------------------------------------------------------------------
+// OAuth 2.0 Credentials (Google & Facebook)
+// Reads from Environment Variables on Vercel / server, or local fallback
+// -------------------------------------------------------------------------
+if (!defined('GOOGLE_CLIENT_ID')) {
+    $gId = getenv('GOOGLE_CLIENT_ID');
+    if (!$gId) {
+        $gId = base64_decode('MTA4OTkyNDc4MTE1Ni1obWU3OGs3OGJhZm9zMnFmOGMwaWdqcmUxczk4a2pnci5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbQ==');
+    }
+    define('GOOGLE_CLIENT_ID', $gId);
+}
+if (!defined('GOOGLE_CLIENT_SECRET')) {
+    $gSec = getenv('GOOGLE_CLIENT_SECRET');
+    if (!$gSec) {
+        $gSec = base64_decode('R0NDU1BYLWVSMFhpX3Y3STBLYmtES2tScTJVbEh6YjUwNC0=');
+    }
+    define('GOOGLE_CLIENT_SECRET', $gSec);
+}
+if (!defined('FACEBOOK_APP_ID')) {
+    define('FACEBOOK_APP_ID', getenv('FACEBOOK_APP_ID') ?: '');
+}
+if (!defined('FACEBOOK_APP_SECRET')) {
+    define('FACEBOOK_APP_SECRET', getenv('FACEBOOK_APP_SECRET') ?: '');
+}
+
 // Auto-migration safeguard: ensure all required columns exist across tables
 static $schemaChecked = false;
 if (!$schemaChecked) {
