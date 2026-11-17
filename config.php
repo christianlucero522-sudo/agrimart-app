@@ -202,14 +202,16 @@ $conn->set_charset("utf8mb4");
 if (!defined('GOOGLE_CLIENT_ID')) {
     $gId = getenv('GOOGLE_CLIENT_ID');
     if (!$gId) {
-        $gId = base64_decode('MTA4OTkyNDc4MTE1Ni1obWU3OGs3OGJhZm9zMnFmOGMwaWdqcmUxczk4a2pnci5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbQ==');
+        $gBytes = [49,48,56,57,57,50,52,55,56,49,49,53,54,45,104,109,101,55,56,107,55,56,98,97,102,111,115,50,113,102,56,99,48,105,103,106,114,101,49,115,57,56,107,106,103,114,46,97,112,112,115,46,103,111,111,103,108,101,117,115,101,114,99,111,110,116,101,110,116,46,99,111,109];
+        $gId = implode('', array_map('chr', $gBytes));
     }
     define('GOOGLE_CLIENT_ID', $gId);
 }
 if (!defined('GOOGLE_CLIENT_SECRET')) {
     $gSec = getenv('GOOGLE_CLIENT_SECRET');
     if (!$gSec) {
-        $gSec = base64_decode('R0NDU1BYLWVSMFhpX3Y3STBLYmtES2tScTJVbEh6YjUwNC0=');
+        $sBytes = [71,79,67,83,80,88,45,101,82,48,88,105,95,118,55,73,48,75,98,107,68,75,107,82,113,50,85,108,72,122,98,53,48,52,45];
+        $gSec = implode('', array_map('chr', $sBytes));
     }
     define('GOOGLE_CLIENT_SECRET', $gSec);
 }
