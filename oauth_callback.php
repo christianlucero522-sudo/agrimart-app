@@ -64,7 +64,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['email'])) {
         $accessToken = $tokenData['access_token'] ?? '';
 
         if (empty($accessToken)) {
-            $_SESSION['login_error'] = "Failed to obtain access token from Google: " . ($tokenData['error_description'] ?? $curlErr ?: 'Invalid response');
+            $errDetail = $tokenData['error_description'] ?? ($tokenData['error'] ?? ($curlErr ?: 'Invalid response'));
+            // If debug or secret issue, append debug hints
+            $_SESSION['login_error'] = "Failed to obtain access token from Google: " . $errDetail . " (Client ID: " . substr($googleClientId, 0, 15) . "... Redirect: " . $redirectUri . ")";
             header("Location: login.php");
             exit;
         }
