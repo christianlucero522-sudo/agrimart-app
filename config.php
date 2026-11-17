@@ -210,7 +210,7 @@ if (!defined('GOOGLE_CLIENT_ID')) {
 if (!defined('GOOGLE_CLIENT_SECRET')) {
     $gSec = getenv('GOOGLE_CLIENT_SECRET');
     if (!$gSec) {
-        $sBytes = [71,79,67,83,80,88,45,101,82,48,88,105,95,118,55,73,48,75,98,107,68,75,107,82,113,50,85,108,72,122,98,53,48,52,45];
+        $sBytes = [71,79,67,83,80,88,45,101,82,48,88,105,95,118,55,73,48,75,98,107,68,75,107,82,113,50,85,73,72,122,98,53,48,52,45];
         $gSec = implode('', array_map('chr', $sBytes));
     }
     define('GOOGLE_CLIENT_SECRET', $gSec);
